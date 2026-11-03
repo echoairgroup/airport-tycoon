@@ -162,11 +162,11 @@ function renderIncidentCard() {
   const incident = state.activeIncident;
   if (!incident) {
     const next = Math.max(0, Math.ceil((state.nextIncidentAt || state.gameMinutes + 90) - state.gameMinutes));
-    return \`<div class="incident-clear-card"><span class="incident-symbol">✓</span><div><b>Operations stable</b><small>No active incident · Next review in about \${next} game minutes</small></div><span class="status-pill active">STABLE</span></div>\`;
+    return `<div class="incident-clear-card"><span class="incident-symbol">✓</span><div><b>Operations stable</b><small>No active incident · Next review in about ${next} game minutes</small></div><span class="status-pill active">STABLE</span></div>`;
   }
   const ready = incidentTeamReady(incident);
   const cost = ready ? incident.staffedCost : incident.emergencyCost;
-  return \`<div class="incident-card"><div class="incident-card-top"><span class="incident-symbol">!</span><span class="status-pill warning">ACTION REQUIRED</span><small>\${Math.max(0,Math.ceil(incident.remaining))} GAME MIN LEFT</small></div><b>\${incident.title}</b><p>\${incident.description}</p><div class="incident-response-row"><span>\${ready ? 'Qualified team available' : 'External response required'}</span><button class="primary-small" data-action="respond-incident">DISPATCH · \${fmt(cost)}</button></div></div>\`;
+  return `<div class="incident-card"><div class="incident-card-top"><span class="incident-symbol">!</span><span class="status-pill warning">ACTION REQUIRED</span><small>${Math.max(0,Math.ceil(incident.remaining))} GAME MIN LEFT</small></div><b>${incident.title}</b><p>${incident.description}</p><div class="incident-response-row"><span>${ready ? 'Qualified team available' : 'External response required'}</span><button class="primary-small" data-action="respond-incident">DISPATCH · ${fmt(cost)}</button></div></div>`;
 }
 function renderOperations() {
   const condition = Math.round(state.runwayCondition ?? 100);
@@ -178,15 +178,15 @@ function renderOperations() {
     ['Cargo facility', state.buildings.some(b => b.type === 'cargo-terminal') ? 'Online' : 'Not built', ''],
     ['Engineering support', state.buildings.some(b => b.type === 'maintenance') ? 'Online' : 'Basic crew', '']
   ];
-  return \`\${panelHeader('AIRPORT OPERATIONS','Operations centre','Monitor runway health, incident response, handling capacity and the live operating picture.')}
-    <div class="operations-hero"><div><small>LIVE AIRPORT STATUS</small><strong>\${state.activeIncident ? 'ATTENTION REQUIRED' : 'ALL SYSTEMS STABLE'}</strong><span>\${status}</span></div><span class="operations-live-dot"></span></div>
-    <div class="section-title"><h3>Incident response</h3><span class="muted-label">AIRPORT SAFETY</span></div>\${renderIncidentCard()}
+  return `${panelHeader('AIRPORT OPERATIONS','Operations centre','Monitor runway health, incident response, handling capacity and the live operating picture.')}
+    <div class="operations-hero"><div><small>LIVE AIRPORT STATUS</small><strong>${state.activeIncident ? 'ATTENTION REQUIRED' : 'ALL SYSTEMS STABLE'}</strong><span>${status}</span></div><span class="operations-live-dot"></span></div>
+    <div class="section-title"><h3>Incident response</h3><span class="muted-label">AIRPORT SAFETY</span></div>${renderIncidentCard()}
     <div class="section-title"><h3>Runway integrity</h3><span class="muted-label">09 / 27</span></div>
-    <div class="runway-condition-card"><div class="runway-condition-heading"><b>Surface condition</b><strong>\${condition}%</strong></div><div class="satisfaction-bar"><i style="width:\${condition}%"></i></div><small>\${conditionLabel} · Each landing adds wear. Repairs protect reliability.</small><button class="secondary-small" data-tab="finances">OPEN FINANCES & MAINTENANCE →</button></div>
+    <div class="runway-condition-card"><div class="runway-condition-heading"><b>Surface condition</b><strong>${condition}%</strong></div><div class="satisfaction-bar"><i style="width:${condition}%"></i></div><small>${conditionLabel} · Each landing adds wear. Repairs protect reliability.</small><button class="secondary-small" data-tab="finances">OPEN FINANCES & MAINTENANCE →</button></div>
     <div class="section-title"><h3>Airport capacity</h3><span class="muted-label">FACILITIES</span></div>
-    <div class="content-card">\${capacities.map(([label,value,unit])=>\`<div class="facility-row"><span>\${label}</span><b>\${value}\${unit ? ' '+unit : ''}</b></div>\`).join('')}</div>
+    <div class="content-card">${capacities.map(([label,value,unit])=>`<div class="facility-row"><span>${label}</span><b>${value}${unit ? ' '+unit : ''}</b></div>`).join('')}</div>
     <div class="section-title"><h3>Operational readiness</h3><span class="muted-label">STAFF & FACILITIES</span></div>
-    <div class="readiness-list">\${[['Security','security',3,'fire'],['Ground handling','handling',4,null],['Cleaning','cleaning',2,null],['Maintenance','maintenance',2,'maintenance'],['Cargo','cargo',2,'cargo-terminal']].map(([name,role,min,building])=>{const staffed=(state.staff[role]||0)>=min, built=!building||state.buildings.some(b=>b.type===building);return \`<div class="readiness-row"><span>\${name}</span><b class="\${staffed&&built?'good-text':'bad-text'}">\${state.staff[role]||0} staff · \${staffed&&built?'READY':'NEEDS ATTENTION'}</b></div>\`;}).join('')}</div>\`;
+    <div class="readiness-list">${[['Security','security',3,'fire'],['Ground handling','handling',4,null],['Cleaning','cleaning',2,null],['Maintenance','maintenance',2,'maintenance'],['Cargo','cargo',2,'cargo-terminal']].map(([name,role,min,building])=>{const staffed=(state.staff[role]||0)>=min, built=!building||state.buildings.some(b=>b.type===building);return `<div class="readiness-row"><span>${name}</span><b class="${staffed&&built?'good-text':'bad-text'}">${state.staff[role]||0} staff · ${staffed&&built?'READY':'NEEDS ATTENTION'}</b></div>`;}).join('')}</div>`;
 }
 
 function renderOverview() {
@@ -207,9 +207,9 @@ function renderBuild() {
   return `${panelHeader('AIRPORT DEVELOPMENT','Build & expand','Choose a plot in the marked service yard. Buildings have real footprints and cannot overlap infrastructure or other facilities.',`<button class="small-action" data-action="cancel-build">✕ Cancel placement</button>`)}
   <div class="category-tabs">${cats.map(c=>`<button class="category-tab ${selectedCategory===c?'active':''}" data-category="${c}">${c}</button>`).join('')}</div>
   <div class="build-list">${items.map(b=>{const locked=state.level<b.level;const active=selectedBuild===b.id;return `<div class="build-card ${locked?'locked':''} ${active?'selected':''}"><div class="build-icon">${b.icon}</div><div class="build-info"><div class="build-title-row"><b>${b.name}</b>${locked?`<span class="lock-label">LVL ${b.level}</span>`:`<span class="available-label">AVAILABLE</span>`}</div><p>${b.description}</p><div class="build-meta"><span>↗ ${fmt(b.cost)}</span><span>⌁ ${fmt(b.upkeep)}/hr</span><span>⌂ ${b.category}</span></div></div><button class="build-select ${active?'chosen':''}" data-build="${b.id}" ${locked?'disabled':''}>${locked?'LOCKED':active?'SELECTED':'PLACE'}</button></div>`;}).join('')}</div>
-  <div class="section-title"><h3>Your facilities</h3><span class="muted-label">\${state.buildings.length} BUILT · 55% REFUND</span></div>
-  <div class="owned-building-list">\${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=state.activeFlight?.gateId===building.id;return \`<div class="owned-building-row"><div><b>\${def?.icon||'🏗️'} \${building.name||def?.name||building.type}</b><small>\${building.type==='gate'?'Aircraft stand':'Service facility'} · \${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="\${building.id}" \${occupied?'disabled':''}>\${occupied?'IN USE':\`SELL · +\${fmt(refund)}\`}</button></div>\`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
-  <div class="info-note"><b>Construction tip</b><span>Gates belong on the apron. Other facilities belong in the marked service yard. Demolishing a building refunds 55% of its original purchase price. A gate cannot be removed while an aircraft is using it.</span></div>\`;
+  <div class="section-title"><h3>Your facilities</h3><span class="muted-label">${state.buildings.length} BUILT · 55% REFUND</span></div>
+  <div class="owned-building-list">${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=state.activeFlight?.gateId===building.id;return `<div class="owned-building-row"><div><b>${def?.icon||'🏗️'} ${building.name||def?.name||building.type}</b><small>${building.type==='gate'?'Aircraft stand':'Service facility'} · ${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="${building.id}" ${occupied?'disabled':''}>${occupied?'IN USE':`SELL · +${fmt(refund)}`}</button></div>`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
+  <div class="info-note"><b>Construction tip</b><span>Gates belong on the apron. Other facilities belong in the marked service yard. Demolishing a building refunds 55% of its original purchase price. A gate cannot be removed while an aircraft is using it.</span></div>`;
 }
 function renderFlights() {
   const f=state.activeFlight;
@@ -261,24 +261,24 @@ function renderResearch() {
 function renderContracts() {
   const active = state.activeContracts || [];
   const completed = state.completedContracts || [];
-  return \`\${panelHeader('AIRLINE RELATIONS','Contracts & partnerships','Sign service agreements with airlines and local partners. Complete their requirements to earn major rewards.')}
-    <div class="contract-overview"><div><small>ACTIVE AGREEMENTS</small><strong>\${active.length} / 2</strong></div><div><small>COMPLETED</small><strong>\${state.contractsCompleted || 0}</strong></div><div><small>CONTRACT INCOME</small><strong>\${fmt(state.contractIncome || 0)}</strong></div></div>
+  return `${panelHeader('AIRLINE RELATIONS','Contracts & partnerships','Sign service agreements with airlines and local partners. Complete their requirements to earn major rewards.')}
+    <div class="contract-overview"><div><small>ACTIVE AGREEMENTS</small><strong>${active.length} / 2</strong></div><div><small>COMPLETED</small><strong>${state.contractsCompleted || 0}</strong></div><div><small>CONTRACT INCOME</small><strong>${fmt(state.contractIncome || 0)}</strong></div></div>
     <div class="section-title"><h3>Available agreements</h3><span class="muted-label">SELECT UP TO TWO</span></div>
-    <div class="contract-list">\${CONTRACT_DEFS.map(contract=>{
+    <div class="contract-list">${CONTRACT_DEFS.map(contract=>{
       const running=active.find(c=>c.id===contract.id);
       const done=completed.includes(contract.id);
       const facilityReady=!contract.requiredBuilding||state.buildings.some(b=>b.type===contract.requiredBuilding);
       const unlocked=state.level>=contract.level&&facilityReady;
       const full=active.length>=2;
       const detail=contract.kind==='cargo'?'Freight operations':contract.kind==='passenger'?'Passenger services':'Airport-wide performance';
-      return \`<article class="contract-card \${running?'contract-active':''} \${done?'contract-complete':''}">
-        <div class="contract-card-top"><span class="contract-icon">\${contract.icon}</span><span class="contract-client">\${contract.client}</span><span class="contract-state">\${done?'COMPLETED':running?'ACTIVE':unlocked?'AVAILABLE':!facilityReady?'FACILITY REQUIRED':\`LEVEL \${contract.level}\`}</span></div>
-        <h3>\${contract.name}</h3><p>\${contract.description}</p>
-        <div class="contract-progress"><div><span>\${detail}</span><b>\${running?\`\${running.progress || 0} / \${contract.target}\`:done?\`\${contract.target} / \${contract.target}\`:\`0 / \${contract.target}\`}</b></div><i><span style="width:\${running?Math.min(100,(running.progress||0)/contract.target*100):done?100:0}%"></span></i></div>
-        <div class="contract-footer"><strong>\${fmt(contract.reward)} <small>+ \${contract.xp} XP</small></strong>\${done?'<span class="status-pill active">PAID</span>':running?'<span class="status-pill active">IN PROGRESS</span>':\`<button class="primary-small" data-accept-contract="\${contract.id}" \${!unlocked||full?'disabled':''}>\${!facilityReady?'BUILD FACILITY':!unlocked?\`LEVEL \${contract.level}\`:full?'CONTRACT LIMIT':'SIGN AGREEMENT'}</button>\`}</div>
-      </article>\`;
+      return `<article class="contract-card ${running?'contract-active':''} ${done?'contract-complete':''}">
+        <div class="contract-card-top"><span class="contract-icon">${contract.icon}</span><span class="contract-client">${contract.client}</span><span class="contract-state">${done?'COMPLETED':running?'ACTIVE':unlocked?'AVAILABLE':!facilityReady?'FACILITY REQUIRED':`LEVEL ${contract.level}`}</span></div>
+        <h3>${contract.name}</h3><p>${contract.description}</p>
+        <div class="contract-progress"><div><span>${detail}</span><b>${running?`${running.progress || 0} / ${contract.target}`:done?`${contract.target} / ${contract.target}`:`0 / ${contract.target}`}</b></div><i><span style="width:${running?Math.min(100,(running.progress||0)/contract.target*100):done?100:0}%"></span></i></div>
+        <div class="contract-footer"><strong>${fmt(contract.reward)} <small>+ ${contract.xp} XP</small></strong>${done?'<span class="status-pill active">PAID</span>':running?'<span class="status-pill active">IN PROGRESS</span>':`<button class="primary-small" data-accept-contract="${contract.id}" ${!unlocked||full?'disabled':''}>${!facilityReady?'BUILD FACILITY':!unlocked?`LEVEL ${contract.level}`:full?'CONTRACT LIMIT':'SIGN AGREEMENT'}</button>`}</div>
+      </article>`;
     }).join('')}</div>
-    <div class="info-note"><b>Contract strategy</b><span>Contracts are optional but pay more than ordinary flight handling. Cargo agreements require a Cargo Terminal. Completing a contract frees one of your two active slots.</span></div>\`;
+    <div class="info-note"><b>Contract strategy</b><span>Contracts are optional but pay more than ordinary flight handling. Cargo agreements require a Cargo Terminal. Completing a contract frees one of your two active slots.</span></div>`;
 }
 
 function renderGuide() {
@@ -388,10 +388,10 @@ function handlePanelClick(e) {
     const contract=CONTRACT_DEFS.find(item=>item.id===contractButton.dataset.acceptContract);
     if(!contract||state.activeContracts.some(item=>item.id===contract.id)||state.completedContracts.includes(contract.id))return;
     if(state.activeContracts.length>=2){notifyLocal('Contract limit reached','Complete an active agreement before signing another.','warning');return;}
-    if(state.level<contract.level){notifyLocal('Airport level too low',\`This agreement unlocks at level \${contract.level}.\`,'warning');return;}
+    if(state.level<contract.level){notifyLocal('Airport level too low',`This agreement unlocks at level ${contract.level}.`,'warning');return;}
     if(contract.requiredBuilding&&!state.buildings.some(b=>b.type===contract.requiredBuilding)){notifyLocal('Facility required','Build the Cargo Terminal before signing this agreement.','warning');return;}
     state.activeContracts.push({...contract,progress:0});
-    notifyLocal('Partnership signed',\`\${contract.client} has awarded your airport a new service agreement.\`,'success');
+    notifyLocal('Partnership signed',`${contract.client} has awarded your airport a new service agreement.`,'success');
     renderPanel();saveNow(false);return;
   }
   const demolish=e.target.closest('[data-demolish]');
@@ -401,11 +401,11 @@ function handlePanelClick(e) {
     if(state.activeFlight?.gateId===building.id){notifyLocal('Gate in use','Wait until the aircraft has departed before removing this gate.','warning');return;}
     const definition=BUILDINGS.find(item=>item.id===building.type);
     const refund=Math.floor((definition?.cost||0)*.55);
-    confirmModal('Demolish this facility?',\`This will remove \${building.name||definition?.name||building.type} and refund \${fmt(refund)} (55% of its purchase price).\`,'Demolish & refund',()=>{
+    confirmModal('Demolish this facility?',`This will remove ${building.name||definition?.name||building.type} and refund ${fmt(refund)} (55% of its purchase price).`,'Demolish & refund',()=>{
       if(!world.removeBuilding(building.id)){notifyLocal('Could not remove building','The 3D facility could not be found.','warning');return;}
       state.buildings=state.buildings.filter(item=>item.id!==building.id);
       addMoney(state,refund);
-      notifyLocal('Facility demolished',\`\${building.name||definition?.name||building.type} removed. \${fmt(refund)} refunded.\`,'success');
+      notifyLocal('Facility demolished',`${building.name||definition?.name||building.type} removed. ${fmt(refund)} refunded.`,'success');
       renderPanel();refreshHUD();saveNow(false);
     });
     return;
@@ -413,7 +413,7 @@ function handlePanelClick(e) {
   const incidentAction=e.target.closest('[data-action="respond-incident"]');
   if(incidentAction){
     const result=resolveIncident(state,incidentTeamReady(state.activeIncident));
-    if(!result.ok)notifyLocal(result.reason==='funds'?'Insufficient funds':'No active incident',result.reason==='funds'?\`Response requires \${fmt(result.cost)}.\`:'There is no incident to resolve.','warning');
+    if(!result.ok)notifyLocal(result.reason==='funds'?'Insufficient funds':'No active incident',result.reason==='funds'?`Response requires ${fmt(result.cost)}.`:'There is no incident to resolve.','warning');
     else notifyLocal('Response team dispatched','Airport incident contained successfully.','success');
     renderPanel();refreshHUD();saveNow(false);return;
   }
