@@ -729,7 +729,8 @@ export class AirportWorld {
       this.scene.add(this.aircraftMesh);
     }
     const p = flight.position || { x: -58, y: 8, z: -16 };
-    this.aircraftMesh.position.set(p.x, p.y, p.z);
+    const wheelClearance = kind === 'cargo' ? .196 : kind === 'jet' ? .169 : .088;
+    this.aircraftMesh.position.set(p.x, p.y + wheelClearance, p.z);
     this.aircraftMesh.rotation.y = Number.isFinite(flight.yaw) ? flight.yaw : Math.PI / 2;
     const airborne = ['approach', 'takeoff'].includes(flight.phase) && p.y > 2.2;
     this.aircraftMesh.userData.wheels.forEach(w => { w.visible = !airborne; });
