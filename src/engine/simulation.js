@@ -59,16 +59,23 @@ function startFlight(state) {
   const availableGates = [START_GATE, ...state.buildings.filter(b => b.type === 'gate')];
   const gate = availableGates[state.flightsCompleted % availableGates.length];
   const models = [
-    { model: 'ATR 72-600', passengers: 68 },
-    { model: 'Dash 8 Q400', passengers: 62 },
-    { model: 'Saab 2000', passengers: 78 },
+    { model: 'ATR 72-600', passengers: 68, kind: 'regional' },
+    { model: 'Dash 8 Q400', passengers: 74, kind: 'regional' },
+    { model: 'Airbus A320neo', passengers: 150, kind: 'jet' },
+    { model: 'Boeing 737-800', passengers: 164, kind: 'jet' },
+    { model: 'Boeing 737-800F', passengers: 0, cargoTons: 22, kind: 'cargo' },
+    { model: 'Airbus A330F', passengers: 0, cargoTons: 44, kind: 'cargo' },
   ];
   const aircraft = models[state.flightsCompleted % models.length];
   const f = {
     id: `AT${String(state.flightsCompleted + 1).padStart(3, '0')}`,
-    airline: ['SkyWays', 'Northstar Air', 'CloudJet', 'BluePeak'][state.flightsCompleted % 4],
+    airline: aircraft.kind === 'cargo'
+      ? ['CargoLink', 'Northstar Freight'][state.flightsCompleted % 2]
+      : ['SkyWays', 'Northstar Air', 'CloudJet', 'BluePeak'][state.flightsCompleted % 4],
     model: aircraft.model,
-    passengers: Math.min(aircraft.passengers, 58 + (state.flightsCompleted * 7 % 27)),
+    kind: aircraft.kind,
+    passengers: aircraft.kind === 'cargo' ? 0 : Math.min(aircraft.passengers, 58 + (state.flightsCompleted * 7 % Math.max(1, aircraft.passengers - 57))),
+    cargoTons: aircraft.cargoTons || 0,
     gateId: gate.id,
     phase: 'approach',
     timer: 0,
@@ -81,14 +88,16 @@ function startFlight(state) {
 }
 function finishFlight(state) {
   const f = state.activeFlight;
-  const result = settleFlight(state, f.passengers);
+  const result = settleFlight(state, f.passengers, f.cargoTons || 0);
+  state.cargoTonsHandled = (state.cargoTonsHandled || 0) + (f.cargoTons || 0);
   state.stats.peakPassengers = Math.max(state.stats.peakPassengers, state.passengers);
   state.reputation = Math.min(100, state.reputation + (state.satisfaction > 75 ? .45 : -.2));
   state.flightHistory.unshift({ id: f.id, airline: f.airline, model: f.model, passengers: f.passengers, net: result.net, time: state.gameMinutes, status: 'Departed' });
   state.flightHistory = state.flightHistory.slice(0, 20);
-  notify(state, 'Flight departed', `${f.id} took off successfully. Net contribution: €${Math.round(result.net).toLocaleString('en-GB')}.`, 'success');
+  const operation = f.cargoTons ? `${f.cargoTons} tonnes of cargo delivered` : `${f.passengers} passengers served`;
+  notify(state, 'Flight departed', `${f.id} took off successfully. ${operation}. Net contribution: €${Math.round(result.net).toLocaleString('en-GB')}.`, 'success');
   state.activeFlight = null;
-  state.nextFlightAt = state.gameMinutes + (state.research.includes('digital-slots') ? 22 : 26);
+  state.nextFlightAt = state.gameMinutes + (state.research.includes('digital-slots') ? 14 : 18);
 }
 function changePhase(state, flight, phase, message) {
   flight.phase = phase;
@@ -127,6 +136,7 @@ export function tickGame(state, realDelta) {
     if (f.phase === 'approach') {
       if (advanceRoute(f, gameDelta)) {
         state.stats.landings++;
+        state.runwayCondition = Math.max(40, (state.runwayCondition ?? 100) - .22);
         setRoute(f, [v(-28, 1.19, -16), v(-16, 1.19, -16), v(0, 1.19, -16), v(22, 1.19, -16)], 5.8);
         changePhase(state, f, 'landing-rollout', { title: 'Touchdown!', message: `${f.airline} ${f.id} has landed on runway 09.`, type: 'success' });
       }
