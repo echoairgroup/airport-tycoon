@@ -29,7 +29,7 @@ export const INITIAL_STATE = () => ({
   research: [], researchInProgress: null, missionsClaimed: [], flightsCompleted: 0, flightsCancelled: 0,
   lifetimeRevenue: 0, lifetimeExpenses: 0, retailIncome: 0, parkingIncome: 0,
   flightHistory: [], notifications: [], nextFlightAt: 8 * 60 + 1, activeFlight: null,
-  activeContracts: [], completedContracts: [], contractsCompleted: 0,
+  activeContracts: [], completedContracts: [], contractsCompleted: 0, contractIncome: 0,
   activeIncident: null, nextIncidentAt: 8 * 60 + 90,
   stats: { constructions: 0, incidents: 0, incidentsResolved: 0, takeoffs: 0, landings: 0, peakPassengers: 0 },
   tutorialStep: 0, tutorialComplete: false, lastSavedAt: Date.now(), lastRealTime: Date.now(),
