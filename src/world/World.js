@@ -653,10 +653,11 @@ export class AirportWorld {
       box(root, 48, .30, 14, shared.asphaltEdge, 0, -.015, 0, false);
       box(root, 45, .28, 11, shared.asphalt, 0, .16, 0, false);
       for (let x = -19; x <= 19; x += 5) box(root, 2.1, .035, .18, shared.white, x, .32, 0, false);
-      const outerEnd = x < 0 ? -22.6 : 22.6;
+      const endDirection = root.position.x < 0 ? -1 : 1;
+      const outerEnd = endDirection * 22.6;
       for (let z = -3.8; z <= 3.8; z += 1.9) {
         box(root, .25, .035, 1.2, shared.white, outerEnd, .32, z, false);
-        sphere(root, .13, shared.white, outerEnd - Math.sign(x) * .8, .39, z, [.8, .65, .8]);
+        sphere(root, .13, shared.white, outerEnd - endDirection * .8, .39, z, [.8, .65, .8]);
       }
     } else if (type === 'cargo-terminal') {
       box(root, 16, 5.2, 10.5, material('#dce5e4'), 0, 2.6, 0);
