@@ -1,0 +1,44 @@
+name: Import Airport Tycoon Arcade 0.2.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Airport-Tycoon-Arcade-0.2.1.zip.b64"
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract and install game files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Airport-Tycoon-Arcade-0.2.1.zip.b64
+          base64 --decode Airport-Tycoon-Arcade-0.2.1.zip.b64 > /tmp/arcade-update.zip
+          unzip -t /tmp/arcade-update.zip
+          mkdir -p /tmp/arcade-update
+          unzip -q /tmp/arcade-update.zip -d /tmp/arcade-update
+          test -d /tmp/arcade-update/airport-tycoon
+          cp -a /tmp/arcade-update/airport-tycoon/. .
+          rm -f Airport-Tycoon-Arcade-0.2.1.zip.b64
+          rm -f .github/workflows/import-arcade-update.yml
+
+      - name: Commit imported files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "Import Airport Tycoon Arcade 0.2.1"
+          git push
