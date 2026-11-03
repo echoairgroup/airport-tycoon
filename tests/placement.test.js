@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getPlacementStatus } from '../src/engine/placement.js';
 import { INITIAL_STATE } from '../src/data.js';
-import { hourlyExpenses, settleFlight } from '../src/engine/economy.js';
+import { hourlyExpenses, hourlyIncome, settleFlight } from '../src/engine/economy.js';
+import { progressContracts, resolveIncident } from '../src/engine/simulation.js';
 
 test('allows a facility on a clear service-yard plot', () => {
   assert.equal(getPlacementStatus('cafe', 0, 39).valid, true);
@@ -79,4 +80,52 @@ test('cargo flights add freight revenue without counting passengers', () => {
   assert.equal(cargoRevenue - baseRevenue, 20 * 620);
   assert.equal(freight.totalPassengers, 0);
   assert.equal(freight.flightsCompleted, 1);
+});
+
+
+test('cargo terminal increases freight revenue', () => {
+  const standard = INITIAL_STATE();
+  const specialist = INITIAL_STATE();
+  specialist.buildings.push({ id: 'cargo-1', type: 'cargo-terminal', upkeep: 210 });
+  const base = settleFlight(standard, 0, 20).revenue;
+  const enhanced = settleFlight(specialist, 0, 20).revenue;
+  assert.ok(enhanced > base);
+});
+
+test('airport hotel adds passive hourly income', () => {
+  const standard = INITIAL_STATE();
+  const hotel = INITIAL_STATE();
+  hotel.buildings.push({ id: 'hotel-1', type: 'hotel', upkeep: 245 });
+  assert.equal(hourlyIncome(hotel) - hourlyIncome(standard), 520);
+});
+
+test('qualified teams resolve incidents at the staffed response cost', () => {
+  const state = INITIAL_STATE();
+  state.activeIncident = {
+    id: 'test-alert', title: 'Test alert', staffRole: 'maintenance', minStaff: 1,
+    staffedCost: 300, emergencyCost: 1000, penaltyCost: 2000,
+    satisfactionPenalty: 4, reputationPenalty: 2
+  };
+  const before = state.money;
+  const result = resolveIncident(state, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.cost, 300);
+  assert.equal(state.money, before - 300);
+  assert.equal(state.activeIncident, null);
+  assert.equal(state.stats.incidentsResolved, 1);
+});
+
+test('airline contracts progress and pay out on a matching flight', () => {
+  const state = INITIAL_STATE();
+  state.activeContracts = [{
+    id: 'regional-partner', name: 'Regional Network Partnership', client: 'Northstar Air',
+    kind: 'passenger', target: 2, progress: 0, minimumPassengers: 60, reward: 12500, xp: 210
+  }];
+  const flight = { kind: 'regional', passengers: 72, cargoTons: 0 };
+  assert.deepEqual(progressContracts(state, flight), []);
+  assert.equal(state.activeContracts[0].progress, 1);
+  assert.deepEqual(progressContracts(state, flight), ['regional-partner']);
+  assert.equal(state.activeContracts.length, 0);
+  assert.equal(state.contractsCompleted, 1);
+  assert.ok(state.money >= 87500);
 });
