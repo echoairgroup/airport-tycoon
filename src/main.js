@@ -44,7 +44,7 @@ function beginGame(loaded = false) {
     delete state.offlineEarnings;
   }
   renderPanel(); refreshHUD();
-  if (!state.tutorialComplete && state.tutorialStep < 4) showTutorial();
+  if (!state.tutorialComplete && state.tutorialStep < 6) showTutorial();
 }
 
 function startNewGame() {
@@ -145,7 +145,7 @@ function renderPanel() {
   const template={
     overview:renderOverview, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
     employees:renderEmployees, passengers:renderPassengers, finances:renderFinances,
-    research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings
+    research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
   content.innerHTML=template();
 }
@@ -183,7 +183,7 @@ function renderAircraft() {
   return `${panelHeader('FLEET MANAGEMENT','Aircraft','Track the aircraft currently operating at your airport.')}
   <div class="fleet-summary"><div><span>ACTIVE AIRCRAFT</span><b>${f?1:0}</b></div><div><span>FLIGHTS COMPLETED</span><b>${state.flightsCompleted}</b></div><div><span>AVAILABLE GATES</span><b>${1+extraGates()}</b></div></div>
   ${f?`<div class="aircraft-card"><div class="aircraft-illustration">✈</div><div class="aircraft-details"><div class="flight-label">${f.airline} · ${f.id}</div><h3>${f.model}</h3><p>Regional passenger aircraft · ${f.passengers} seats booked</p><div class="aircraft-tags"><span>${flightPhaseLabel(f.phase)}</span><span>Gate ${f.gateId==='initial-gate'?'01':'02+'}</span></div></div></div>`:'<div class="empty-state">No aircraft on the apron right now. Your next scheduled arrival will appear here.</div>'}
-  <div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">STARTER FLEET</span></div><div class="catalogue-row"><div class="catalogue-icon">🛩️</div><div><b>AT-72 Regional</b><small>70 seats · Short-haul · Basic runway</small></div><span class="status-pill active">UNLOCKED</span></div><div class="catalogue-row"><div class="catalogue-icon">✈️</div><div><b>AJ-100 Regional Jet</b><small>100 seats · Medium runway required</small></div><span class="lock-label">LEVEL 5</span></div><div class="catalogue-row"><div class="catalogue-icon">🛫</div><div><b>AJ-220 Narrow-body</b><small>180 seats · Extended gate required</small></div><span class="lock-label">LEVEL 10</span></div>`;
+  <div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">AIR TRAFFIC TYPES</span></div><div class="catalogue-row"><div class="catalogue-icon">🛩️</div><div><b>ATR 72-600 / Dash 8 Q400</b><small>Regional turboprops · Short-haul passenger flights</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">✈️</div><div><b>Airbus A320neo / Boeing 737-800</b><small>Narrow-body passenger jets · Medium-haul routes</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">📦</div><div><b>Boeing 737-800F / Airbus A330F</b><small>Cargo aircraft · Freight loading and unloading</small></div><span class="status-pill active">IN TRAFFIC</span></div>`;
 }
 function renderEmployees() {
   const roles=[['security','Security','🛂','Passenger screening and terminal safety'],['handling','Ground handling','🦺','Aircraft turnaround and baggage services'],['cleaning','Cleaning staff','🧹','Terminal cleanliness and comfort'],['maintenance','Maintenance','🔧','Runway and facility reliability']];
@@ -206,7 +206,8 @@ function renderFinances() {
   <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} estimated net per game hour</span></div><div class="balance-icon">€</div></div>
   <div class="stat-grid">${statCard('EST. HOURLY INCOME',fmt(income),'Flights and airport services','↗','teal')}${statCard('HOURLY EXPENSES',fmt(expenses),'Staff and maintenance','↘','orange')}${statCard('LIFETIME REVENUE',fmt(state.lifetimeRevenue),'Total earned','€','purple')}</div>
   <div class="content-card chart-card"><div class="card-heading"><h3>Recent flight performance</h3><span class="muted-label">PER COMPLETED FLIGHT</span></div><div class="chart-legend"><span><i class="legend-income"></i> Revenue</span><span><i class="legend-expense"></i> Expenses</span></div><div class="bar-chart">${history.map(h=>`<div class="bar-group"><div class="bar-pair"><i class="bar-income" style="height:${Math.max(2,h.income/max*100)}%" title="Revenue ${fmt(h.income)}"></i><i class="bar-expense" style="height:${Math.max(2,h.expenses/max*100)}%" title="Expenses ${fmt(h.expenses)}"></i></div><small>${h.label}</small></div>`).join('')||'<div class="empty-state">Complete a flight to start building your financial history.</div>'}</div></div>
-  <div class="section-title"><h3>Financial breakdown</h3></div><div class="facility-row"><span>Employee wages</span><b>${fmt(totalStaff()*55)} / hr</b></div><div class="facility-row"><span>Base airport operations</span><b>€280 / hr</b></div><div class="facility-row"><span>Building maintenance</span><b>${fmt(state.buildings.reduce((a,b)=>a+b.upkeep,0))} / hr</b></div><div class="facility-row"><span>Parking & retail income</span><b class="good-text">${fmt(state.buildings.filter(b=>b.type==='parking').length*390+state.buildings.filter(b=>['cafe','shop'].includes(b.type)).length*260)} / hr</b></div>`;
+  <div class="maintenance-card"><div><small>RUNWAY SURFACE CONDITION</small><strong>${Math.round(state.runwayCondition ?? 100)}%</strong><p>Landings wear the asphalt. Repair the surface to keep maintenance costs under control.</p><div class="satisfaction-bar"><i style="width:${state.runwayCondition ?? 100}%"></i></div></div><button class="primary-small" data-action="repair-runway" ${(state.runwayCondition ?? 100) >= 99 ? 'disabled' : ''}>REPAIR · ${fmt(Math.round((100-(state.runwayCondition ?? 100))*140+250))}</button></div>
+  <div class="section-title"><h3>Financial breakdown</h3></div><div class="facility-row"><span>Employee wages</span><b>${fmt(totalStaff()*55)} / hr</b></div><div class="facility-row"><span>Base airport operations</span><b>€280 / hr</b></div><div class="facility-row"><span>Building maintenance</span><b>${fmt(state.buildings.reduce((a,b)=>a+b.upkeep,0))} / hr</b></div><div class="facility-row"><span>Runway wear & maintenance</span><b>${fmt(Math.max(0,82-(state.runwayCondition ?? 100))*1.35)} / hr</b></div><div class="facility-row"><span>Parking & retail income</span><b class="good-text">${fmt(state.buildings.filter(b=>b.type==='parking').length*390+state.buildings.filter(b=>['cafe','shop'].includes(b.type)).length*260)} / hr</b></div><div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>`;
 }
 function renderResearch() {
   return `${panelHeader('AIRPORT INNOVATION','Research & technology','Invest in improvements that have a measurable effect on airport operations.')}
@@ -214,6 +215,23 @@ function renderResearch() {
   <div class="research-list">${RESEARCH.map(r=>{const researched=state.research.includes(r.id), active=state.researchInProgress?.id===r.id, locked=state.level<r.level;return `<div class="research-card ${researched?'researched':''} ${locked?'locked':''}"><div class="research-icon">${r.icon}</div><div class="research-info"><small>${r.category.toUpperCase()}</small><b>${r.name}</b><p>${r.description}</p><span>Cost ${fmt(r.cost)} · ${r.duration} game minutes · Level ${r.level}</span></div><button class="research-button" data-research="${r.id}" ${researched||active||locked||state.researchInProgress?'disabled':''}>${researched?'✓ COMPLETE':active?'IN PROGRESS':locked?`LEVEL ${r.level}`:'RESEARCH'}</button></div>`;}).join('')}</div>
   <div class="info-note"><b>Research benefits</b><span>Research advances in game time. Only one project can run at a time. Completed technologies remain active for the rest of your save.</span></div>`;
 }
+
+function renderGuide() {
+  return `${panelHeader('LEARNING CENTRE','Tutorial & airport guide','Start the simple beginner tour or use this complete reference while you play.')}
+    <div class="guide-mode-grid">
+      <section class="guide-mode-card"><span class="guide-icon">🧭</span><div><b>Beginner mode</b><p>A six-step tour through the airport, camera, aircraft, construction and management.</p></div><button class="primary-small" data-action="restart-tutorial">START TUTORIAL</button></section>
+      <section class="guide-mode-card"><span class="guide-icon">📚</span><div><b>Advanced reference</b><p>Look up the systems and controls whenever you need a reminder.</p></div><span class="guide-tag">FULL GUIDE</span></section>
+    </div>
+    <div class="guide-section"><h3>1. Camera and controls</h3><div class="guide-row"><b>Rotate</b><span>Hold the left mouse button and drag across the 3D world.</span></div><div class="guide-row"><b>Zoom</b><span>Use the mouse wheel to zoom in on aircraft, buildings and runway details.</span></div><div class="guide-row"><b>Move view</b><span>Hold the right mouse button and drag to pan across the map.</span></div><div class="guide-row"><b>Keyboard</b><span><kbd>B</kbd> opens Build, <kbd>Esc</kbd> cancels placement, <kbd>1</kbd>/<kbd>2</kbd>/<kbd>4</kbd> changes speed and <kbd>Space</kbd> pauses.</span></div></div>
+    <div class="guide-section"><h3>2. Understand the airport</h3><div class="guide-row"><b>Runway</b><span>The long marked strip is where aircraft land and take off. Rubber marks, thresholds and lights identify it.</span></div><div class="guide-row"><b>Taxiways</b><span>Aircraft follow the yellow centre line between the runway and apron.</span></div><div class="guide-row"><b>Apron and gates</b><span>Aircraft park on the apron. Gates connect the terminal to an aircraft at a stand.</span></div><div class="guide-row"><b>Terminal</b><span>Passengers enter here, use airport services and walk to their gate.</span></div></div>
+    <div class="guide-section"><h3>3. Flights and aircraft</h3><p>Arriving aircraft descend, touch down, roll along the runway and taxi to a stand. At the gate passengers or freight are handled. The aircraft then taxis out and takes off. Traffic includes regional aircraft, passenger jets and cargo freighters.</p><p>Aircraft appear in the 3D world: parked aircraft remain on the apron while scheduled flights follow their route.</p></div>
+    <div class="guide-section"><h3>4. Passengers and ground handling</h3><p>Passengers walk between the terminal and apron. The baggage tug and carts represent ground handling. Hire handling staff to support turnarounds, security staff for passenger screening and cleaning staff for passenger comfort.</p><p>Build cafés, shops, parking and terminal extensions to add services and passenger capacity.</p></div>
+    <div class="guide-section"><h3>5. Build and expand</h3><p>Open Build, choose a category and select a facility. Move the preview over the map and click to construct it. Green means the location is valid; red means it is blocked. Gates belong on the apron; most other buildings belong in the marked service yard. Press <kbd>Esc</kbd> or Cancel to stop placing a building.</p></div>
+    <div class="guide-section"><h3>6. Finance and maintenance</h3><p>Flight fees, passengers, cafés, shops and parking create income. Staff wages, airport operations and building upkeep create expenses. Landings slowly wear the runway. Open Finances to check its condition and pay for repairs before wear becomes expensive.</p></div>
+    <div class="guide-section"><h3>7. Weather, time and seasons</h3><p>The airport clock advances while the simulation runs. The lighting changes through daylight, dusk and night. The landscape cycles through spring, summer, autumn and winter. Weather can shift between sun, cloud, rain, fog, snow and thunderstorms.</p></div>
+    <div class="guide-footnote">Tip: save regularly with the disk button in the top bar. Your airport is stored in this browser.</div>`;
+}
+
 function missionProgress(m) {
   if(m.metric==='extraGates') return extraGates();
   return state[m.metric] ?? 0;
@@ -243,28 +261,49 @@ function refreshHUD() {
   $('clock-value').textContent=timeLabel(state.gameMinutes);
   const w={Sunny:'☀',Cloudy:'☁',Rain:'🌧',Fog:'🌫',Snow:'❄',Thunderstorm:'⛈'};
   $('weather-icon').textContent=w[state.weather]||'☀'; $('weather-name').textContent=state.weather;
+  const seasons=['Spring','Summer','Autumn','Winter'];
+  const seasonIcons=['🌱','☀','🍂','❄'];
+  const seasonIndex=Math.floor(state.gameMinutes/(1440*3))%4;
+  $('season-name').textContent=seasons[seasonIndex];
+  $('season-icon').textContent=seasonIcons[seasonIndex];
   $('xp-label').textContent=`LEVEL ${state.level} · ${Math.floor(state.xp)} / ${state.level*500} XP`;
   $('xp-next').textContent=`NEXT: LEVEL ${state.level+1}`;
   $('xp-fill').style.width=`${Math.min(100,state.xp/(state.level*500)*100)}%`;
   document.querySelectorAll('.speed-button').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===state.speed));
-  world.syncFlight(state.activeFlight); world.setWeather(state.weather);
+  world.syncFlight(state.activeFlight); world.setTimeOfDay(state.gameMinutes);
 }
 
+
 function showTutorial() {
-  const steps=[
-    ['Welcome to your airport','This is your regional airport. Your first aircraft is scheduled to arrive shortly. Let’s get your airport ready.','NEXT'],
-    ['Explore the 3D airport','Left-drag to rotate, scroll to zoom, and right-drag to pan.','NEXT'],
-    ['Build your airport','Open Build, select a facility and place it on a green construction plot. Red previews are blocked.','NEXT'],
-    ['Manage your operations','Watch the flight board, keep your employees staffed and monitor your finances. Your airport earns money when flights complete.','FINISH']
+  const steps = [
+    ['Welcome to your airport', 'You are in charge of a small regional airport. Your first scheduled aircraft will arrive soon. This guide shows you the most important areas and what to do first.', 'NEXT STEP', 'You start with a terminal, an aircraft gate and €75,000.'],
+    ['Move around the 3D world', 'Hold the left mouse button and drag to rotate the camera. Scroll to zoom. Hold the right mouse button and drag to move the view. Zoom in to inspect aircraft and runway markings.', 'NEXT STEP', 'Try zooming in on the apron, then zoom back out.'],
+    ['Learn the airport layout', 'The long marked strip is the runway. Yellow lines lead along the taxiways. Aircraft park on the apron beside terminal gates. Houses and cars outside the fence form the town around your airport.', 'NEXT STEP', 'The runway is for take-offs and landings; aircraft do not park there.'],
+    ['Watch aircraft operations', 'An arrival descends, touches down, rolls along the runway and taxis to a gate. Passengers or freight are handled at the stand. The aircraft then taxis out and takes off again.', 'VIEW FLIGHT BOARD', 'The Flights page shows the current phase and aircraft type.'],
+    ['Build new facilities', 'Open Build, choose a facility and move the placement preview over the map. Green means the location is valid; red means something blocks it. Gates belong on the apron, while most other buildings belong in the service yard.', 'OPEN BUILD MENU', 'Press Esc or Cancel to stop a placement.'],
+    ['Manage a growing airport', 'Hire staff, watch passenger satisfaction, review income and expenses, and repair the runway when its condition drops. Weather, daylight and seasons change as the simulation runs. Save with the disk button.', 'FINISH TUTORIAL', 'The full reference is always available in Tutorial & Guide.']
   ];
-  const [title,desc,button]=steps[Math.min(state.tutorialStep,3)];
-  $('tutorial-card').innerHTML=`<div class="tutorial-step">WELCOME · ${state.tutorialStep+1} / 4</div><b>${title}</b><p>${desc}</p><div class="tutorial-actions"><button class="text-action" data-tutorial="skip">SKIP TUTORIAL</button><button class="primary-small" data-tutorial="next">${button} →</button></div>`;
-  $('tutorial-card').classList.remove('hidden'); tutorialVisible=true;
+  const [title, desc, button, reminder] = steps[Math.min(state.tutorialStep, steps.length - 1)];
+  $('tutorial-card').innerHTML = `<div class="tutorial-step">BEGINNER MODE · STEP ${state.tutorialStep + 1} / ${steps.length}</div><b>${title}</b><p>${desc}</p><div class="tutorial-task"><strong>REMEMBER</strong><span>${reminder}</span></div><div class="tutorial-actions"><button class="text-action" data-tutorial="guide">FULL GUIDE</button><button class="text-action" data-tutorial="skip">SKIP</button><button class="primary-small" data-tutorial="${state.tutorialStep===3?'flights':state.tutorialStep===4?'build':'next'}">${button} →</button></div>`;
+  $('tutorial-card').classList.remove('hidden');
+  tutorialVisible = true;
 }
-function advanceTutorial(skip=false) {
-  if(skip){state.tutorialComplete=true;state.tutorialStep=4;}else{state.tutorialStep++;if(state.tutorialStep>=4)state.tutorialComplete=true;}
-  if(state.tutorialComplete){$('tutorial-card').classList.add('hidden');tutorialVisible=false;saveNow(false);notifyLocal('Tutorial complete','You are ready to manage your airport.','success');}
-  else showTutorial();
+function advanceTutorial(skip = false) {
+  if (skip) {
+    state.tutorialComplete = true;
+    state.tutorialStep = 6;
+  } else {
+    state.tutorialStep++;
+    if (state.tutorialStep >= 6) state.tutorialComplete = true;
+  }
+  if (state.tutorialComplete) {
+    $('tutorial-card').classList.add('hidden');
+    tutorialVisible = false;
+    saveNow(false);
+    notifyLocal('Tutorial complete', 'You are ready to manage your airport. Open Tutorial & Guide whenever you need help.', 'success');
+  } else {
+    showTutorial();
+  }
 }
 
 function handlePanelClick(e) {
@@ -274,7 +313,52 @@ function handlePanelClick(e) {
   const staff=e.target.closest('[data-staff]');if(staff){const role=staff.dataset.staff,delta=Number(staff.dataset.delta);if(delta>0){const cost=1250;if(state.money<cost){notifyLocal('Not enough funds',`Hiring costs ${fmt(cost)}.`,'warning');return;}addMoney(state,-cost);state.staff[role]++;notifyLocal('Employee hired',`${role[0].toUpperCase()+role.slice(1)} staff increased to ${state.staff[role]}.`,'success');}else{if(state.staff[role]<=0)return;state.staff[role]--;notifyLocal('Employee released',`${role[0].toUpperCase()+role.slice(1)} staff reduced to ${state.staff[role]}.`,'info');}renderPanel();refreshHUD();return;}
   const research=e.target.closest('[data-research]');if(research){const r=RESEARCH.find(x=>x.id===research.dataset.research);if(!r||state.research.includes(r.id)||state.researchInProgress)return;if(state.money<r.cost){notifyLocal('Not enough funds',`Research requires ${fmt(r.cost)}.`,'warning');return;}addMoney(state,-r.cost);state.researchInProgress={id:r.id,remaining:r.duration};notifyLocal('Research started',`${r.name} is now in development.`,'success');renderPanel();refreshHUD();return;}
   const claim=e.target.closest('[data-claim]');if(claim){const m=MISSION_DEFS.find(x=>x.id===claim.dataset.claim);if(!m||state.missionsClaimed.includes(m.id)||missionProgress(m)<m.goal)return;state.missionsClaimed.push(m.id);addMoney(state,m.reward);giveXP(state,m.xp);notifyLocal('Mission completed',`${m.title}: ${fmt(m.reward)} and ${m.xp} XP earned.`,'success');renderPanel();refreshHUD();return;}
-  const tutorial=e.target.closest('[data-tutorial]');if(tutorial){advanceTutorial(tutorial.dataset.tutorial==='skip');return;}
+  const tutorial=e.target.closest('[data-tutorial]');
+  if(tutorial){
+    const action=tutorial.dataset.tutorial;
+    if(action==='guide'){
+      $('tutorial-card').classList.add('hidden');
+      tutorialVisible=false;
+      setActiveTab('guide');
+      renderPanel();
+      return;
+    }
+    if(action==='flights'||action==='build'){
+      state.tutorialStep++;
+      setActiveTab(action);
+      renderPanel();
+      showTutorial();
+      saveNow(false);
+      return;
+    }
+    advanceTutorial(action==='skip');
+    return;
+  }
+  const repairButton=e.target.closest('[data-action="repair-runway"]');
+  if(repairButton){
+    const condition=state.runwayCondition??100;
+    const cost=Math.round((100-condition)*140+250);
+    if(condition>=99){
+      notifyLocal('Runway in good condition','No repair is required right now.','info');
+    }else if(state.money<cost){
+      notifyLocal('Not enough funds',`Runway repair requires ${fmt(cost)}.`,'warning');
+    }else{
+      addMoney(state,-cost);
+      state.runwayCondition=100;
+      notifyLocal('Runway repaired','The runway surface is back to 100% condition.','success');
+      refreshHUD();
+    }
+    renderPanel();
+    return;
+  }
+  const restartTutorial=e.target.closest('[data-action="restart-tutorial"]');
+  if(restartTutorial){
+    state.tutorialStep=0;
+    state.tutorialComplete=false;
+    showTutorial();
+    saveNow(false);
+    return;
+  }
   const action=e.target.closest('[data-action]');if(action){const a=action.dataset.action;if(a==='save')saveNow();else if(a==='load'){const saved=loadGame();if(saved){state={...INITIAL_STATE(),...saved};world.dispose();$('game-world').innerHTML='';bootWorld();renderPanel();refreshHUD();notifyLocal('Save loaded','Your saved airport has been restored.','success');}else notifyLocal('No save found','There is no valid saved airport.','warning');}else if(a==='new-game')confirmModal('Start a new airport?','This will replace your current airport. Save first if you want to keep it.','Start new game',startNewGame);else if(a==='focus')world.focusAirport();else if(a==='cancel-build')cancelBuild();else if(a==='toggle-panel')togglePanel();renderPanel();return;}
 }
 
@@ -324,6 +408,7 @@ function animate(now) {
     }
     if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(currentTab==='missions'||currentTab==='overview'||currentTab==='flights')renderPanel();state._lastPanelTick=state.gameMinutes;}
     if(oldWeather!==state.weather)world.setWeather(state.weather);
+    world.setTimeOfDay(state.gameMinutes);
     world.syncFlight(state.activeFlight);
     if(now-lastAutosave>10000){saveNow(false);lastAutosave=now;}
     if(now%400<18)refreshHUD();
