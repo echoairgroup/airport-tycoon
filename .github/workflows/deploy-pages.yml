@@ -55,6 +55,16 @@ jobs:
       - name: Build production website
         run: npm run build
 
+      - name: Verify CSS is present in the production output
+        shell: bash
+        run: |
+          test -s dist/index.html
+          CSS_PATH="$(grep -oE 'href="[^"]+\\.css"' dist/index.html | head -n 1 | cut -d '"' -f 2)"
+          test -n "$CSS_PATH"
+          CSS_FILE="dist/${CSS_PATH#./}"
+          test -s "$CSS_FILE"
+          echo "Verified stylesheet: $CSS_FILE"
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 

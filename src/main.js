@@ -4,8 +4,6 @@ import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, addMoney } from './engine/economy.js';
 import { tickGame, flightPhaseLabel, giveXP } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
-import './style.css';
-import './arcade-overrides.css';
 
 let state = INITIAL_STATE();
 let world;
