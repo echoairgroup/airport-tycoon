@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1521" />
+    <meta name="description" content="Build and manage your own growing airport in Airport Tycoon." />
+    <title>Airport Tycoon</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="game-world" aria-label="3D airport world"></div>
+      <div id="main-menu" class="menu-overlay">
+        <div class="menu-skyline"></div>
+        <div class="menu-content">
+          <div class="brand-mark">✈</div>
+          <p class="eyebrow">YOUR AIRPORT. YOUR EMPIRE.</p>
+          <h1>AIRPORT<br /><span>TYCOON</span></h1>
+          <p class="menu-copy">Start small. Think big. Build the airport everyone wants to fly through.</p>
+          <div class="menu-actions">
+            <button class="primary-button" id="play-button">▶ &nbsp; PLAY</button>
+            <button class="ghost-button" id="load-button">LOAD AIRPORT</button>
+          </div>
+          <p class="menu-footnote" id="menu-save-label">A new airport is waiting for you.</p>
+        </div>
+        <div class="menu-version">EARLY ACCESS · PHASE 1</div>
+      </div>
+      <header class="topbar hidden" id="topbar">
+        <div class="brand"><span class="brand-icon">✈</span><div><b>AIRPORT TYCOON</b><small>REGIONAL AIRPORT</small></div></div>
+        <div class="top-metrics">
+          <div class="metric cash-metric"><span class="metric-icon">€</span><div><small>CASH</small><strong id="cash-value">€75,000</strong></div></div>
+          <div class="metric"><span class="metric-icon">↗</span><div><small>NET / HR</small><strong id="net-hour">€+0</strong></div></div>
+          <div class="metric"><span class="metric-icon">★</span><div><small>LEVEL</small><strong id="level-value">1</strong></div></div>
+          <div class="metric"><span class="metric-icon">✦</span><div><small>REPUTATION</small><strong id="rep-value">50%</strong></div></div>
+          <div class="metric"><span class="metric-icon">♙</span><div><small>PASSENGERS</small><strong id="pax-value">0</strong></div></div>
+        </div>
+        <div class="top-right"><div class="weather-chip"><span id="weather-icon">☀</span><span id="weather-name">Sunny</span></div><div class="clock"><small>LOCAL TIME</small><strong id="clock-value">08:00</strong></div><button class="icon-button" id="save-button" title="Save game">▣</button></div>
+      </header>
+      <aside class="sidebar hidden" id="sidebar">
+        <div class="sidebar-label">AIRPORT MANAGEMENT</div>
+        <nav id="main-nav">
+          <button class="nav-button active" data-tab="overview"><span>⌂</span>Overview</button>
+          <button class="nav-button" data-tab="build"><span>＋</span>Build <kbd>B</kbd></button>
+          <button class="nav-button" data-tab="flights"><span>↗</span>Flights</button>
+          <button class="nav-button" data-tab="aircraft"><span>✈</span>Aircraft</button>
+          <button class="nav-button" data-tab="employees"><span>♙</span>Employees</button>
+          <button class="nav-button" data-tab="passengers"><span>♧</span>Passengers</button>
+          <button class="nav-button" data-tab="finances"><span>€</span>Finances</button>
+          <button class="nav-button" data-tab="research"><span>⌘</span>Research</button>
+          <button class="nav-button" data-tab="missions"><span>⚑</span>Missions</button>
+          <button class="nav-button" data-tab="statistics"><span>▥</span>Statistics</button>
+          <button class="nav-button" data-tab="settings"><span>⚙</span>Settings</button>
+        </nav>
+        <div class="sidebar-bottom"><div class="airport-status"><span class="live-dot"></span><span>ALL SYSTEMS OPERATIONAL</span></div><div class="sidebar-tip">TIP: Drag to rotate · Scroll to zoom</div></div>
+      </aside>
+      <main class="panel hidden" id="panel"><div id="panel-content"></div></main>
+      <div class="world-hint hidden" id="world-hint"><span class="hint-dot"></span><span id="hint-text">Select a building, then click a free area.</span><button id="cancel-build">CANCEL <b>ESC</b></button></div>
+      <div class="bottom-controls hidden" id="bottom-controls">
+        <div class="sim-control"><span class="sim-label">SIMULATION</span><button data-speed="0" class="speed-button">Ⅱ</button><button data-speed="1" class="speed-button active">1×</button><button data-speed="2" class="speed-button">2×</button><button data-speed="4" class="speed-button">4×</button></div>
+        <div class="progress-wrap"><div class="progress-label"><span id="xp-label">LEVEL 1 · 0 / 500 XP</span><span id="xp-next">NEXT: LEVEL 2</span></div><div class="progress-track"><i id="xp-fill"></i></div></div>
+        <div class="world-coords" id="world-coords">AIRPORT VIEW</div>
+      </div>
+      <div class="toast-stack" id="toast-stack"></div>
+      <div class="modal-backdrop hidden" id="modal-backdrop"><div class="modal-card" id="modal-card"></div></div>
+      <div class="tutorial-card hidden" id="tutorial-card"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
