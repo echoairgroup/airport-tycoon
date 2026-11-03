@@ -431,7 +431,8 @@ export class AirportWorld {
     }
     for (let i = 0; i < 8; i++) {
       const x = -84 + i * 24;
-      this.addDistrictHouse(x, -80, i);
+      if (i === 1 || i === 6) this.addDistrictShop(x, -80, i);
+      else this.addDistrictHouse(x, -80, i);
       this.addDistrictHouse(x, 91, i + 8);
     }
     for (const x of [-78, -42, 42, 78]) {
@@ -466,6 +467,30 @@ export class AirportWorld {
       }
       this.scene.add(car);
       this.trafficCars.push({ mesh: car, progress: i / 10, speed: .014 + (i % 3) * .0012 });
+    }
+  }
+
+
+  addDistrictShop(x, z, variant = 0) {
+    const shop = new THREE.Group();
+    shop.position.set(x, 0, z);
+    this.scene.add(shop);
+    const wall = material(variant % 2 ? '#d9e1df' : '#e8dfce');
+    const trim = material(variant % 2 ? '#2f7895' : '#b66c44');
+    box(shop, 14, .28, 10, material('#aab5ad', .95), 0, .14, 0, false);
+    box(shop, 11.5, 4.4, 8.2, wall, 0, 2.35, 0);
+    box(shop, 12, .45, 8.7, trim, 0, 4.72, 0);
+    box(shop, 10.8, .16, .22, shared.white, 0, 3.75, -4.18, false);
+    box(shop, 8.8, 2.15, .16, shared.glass, 0, 1.95, -4.18, false);
+    box(shop, .18, 2.4, .22, trim, -4.55, 1.9, -4.2, false);
+    box(shop, .18, 2.4, .22, trim, 4.55, 1.9, -4.2, false);
+    box(shop, 1.2, 2.2, .18, material('#76513c'), 0, 1.55, -4.24);
+    box(shop, 2.8, .18, 1.5, material('#b2a38b'), -5.9, .09, .8, false);
+    const sign = makeTextLabel(variant % 2 ? 'MARKET' : 'LOCAL SHOP', '#ffffff', [5.2, .9, 1]);
+    sign.position.set(0, 3.95, -4.36);
+    shop.add(sign);
+    for (const side of [-1, 1]) {
+      this.addTree(x + side * 8.2, z + 1.6, .66);
     }
   }
 
