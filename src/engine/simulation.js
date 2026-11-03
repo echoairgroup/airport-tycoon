@@ -1,4 +1,5 @@
 import { addMoney, hourlyExpenses, settleFlight } from './economy.js';
+import { CONTRACT_DEFS } from '../data.js';
 
 const v = (x, y, z) => ({ x, y, z });
 const START_GATE = { x: 8, z: 8.5, id: 'initial-gate' };
@@ -76,6 +77,7 @@ function startFlight(state) {
     kind: aircraft.kind,
     passengers: aircraft.kind === 'cargo' ? 0 : Math.min(aircraft.passengers, 58 + (state.flightsCompleted * 7 % Math.max(1, aircraft.passengers - 57))),
     cargoTons: aircraft.cargoTons || 0,
+    destination: ['Amsterdam', 'Copenhagen', 'London', 'Hamburg', 'Paris', 'Brussels'][state.flightsCompleted % 6],
     gateId: gate.id,
     phase: 'approach',
     timer: 0,
@@ -86,13 +88,93 @@ function startFlight(state) {
   state.activeFlight = f;
   notify(state, 'Aircraft on final', `${f.airline} ${f.id} is descending for runway 09.`, 'flight');
 }
+export function progressContracts(state, flight) {
+  const active = Array.isArray(state.activeContracts) ? state.activeContracts : [];
+  const stillActive = [];
+  const completed = [];
+  for (const contract of active) {
+    const matchesType = contract.kind === 'any' ||
+      (contract.kind === 'cargo' && (flight.cargoTons || 0) > 0) ||
+      (contract.kind === 'passenger' && (flight.passengers || 0) > 0);
+    const satisfiesPassengers = !contract.minimumPassengers || flight.passengers >= contract.minimumPassengers;
+    const satisfiesCargo = !contract.minimumCargo || (flight.cargoTons || 0) >= contract.minimumCargo;
+    const satisfiesSatisfaction = !contract.minimumSatisfaction || state.satisfaction >= contract.minimumSatisfaction;
+    if (!matchesType || !satisfiesPassengers || !satisfiesCargo || !satisfiesSatisfaction) {
+      stillActive.push(contract);
+      continue;
+    }
+    const updated = { ...contract, progress: (contract.progress || 0) + 1 };
+    if (updated.progress >= updated.target) {
+      completed.push(updated.id);
+      addMoney(state, updated.reward);
+      state.contractsCompleted = (state.contractsCompleted || 0) + 1;
+      state.completedContracts = [...(state.completedContracts || []), updated.id];
+      giveXP(state, updated.xp);
+      notify(state, 'Airline contract completed', `${updated.name}: ${updated.client} paid ${fmtContractMoney(updated.reward)} and awarded ${updated.xp} XP.`, 'success');
+    } else {
+      stillActive.push(updated);
+    }
+  }
+  state.activeContracts = stillActive;
+  return completed;
+}
+function fmtContractMoney(amount) {
+  return `€${Math.round(amount).toLocaleString('en-GB')}`;
+}
+
+const INCIDENT_POOL = [
+  { id: 'baggage-backlog', title: 'Baggage handling backlog', description: 'A late baggage belt has created a queue. Dispatch extra ground handlers before passengers become unhappy.', staffRole: 'handling', minStaff: 4, staffedCost: 550, emergencyCost: 1450, penaltyCost: 2600, satisfactionPenalty: 5, reputationPenalty: 1.2 },
+  { id: 'medical-assistance', title: 'Passenger medical assistance', description: 'A passenger needs urgent help in the terminal. Security staff and the fire station can coordinate a rapid response.', staffRole: 'security', minStaff: 3, requiredBuilding: 'fire', staffedCost: 650, emergencyCost: 1850, penaltyCost: 3200, satisfactionPenalty: 7, reputationPenalty: 1.8 },
+  { id: 'runway-debris', title: 'Runway debris inspection', description: 'Operations has reported debris near the runway. An engineering crew must inspect and clear the surface.', staffRole: 'maintenance', minStaff: 2, requiredBuilding: 'maintenance', staffedCost: 500, emergencyCost: 2100, penaltyCost: 3900, satisfactionPenalty: 3, reputationPenalty: 2.1, runwayWear: 6 },
+  { id: 'cargo-delay', title: 'Freight loading delay', description: 'A freight consignment is behind schedule. Dispatch the cargo team and use the cargo terminal to recover the slot.', staffRole: 'cargo', minStaff: 2, requiredBuilding: 'cargo-terminal', staffedCost: 700, emergencyCost: 1950, penaltyCost: 3400, satisfactionPenalty: 2, reputationPenalty: 1.4 }
+];
+
+function updateIncidents(state, gameDelta) {
+  if (state.activeIncident) {
+    state.activeIncident.remaining -= gameDelta;
+    if (state.activeIncident.remaining <= 0) {
+      const incident = state.activeIncident;
+      addMoney(state, -incident.penaltyCost);
+      state.satisfaction = Math.max(35, state.satisfaction - incident.satisfactionPenalty);
+      state.reputation = Math.max(0, state.reputation - incident.reputationPenalty);
+      if (incident.runwayWear) state.runwayCondition = Math.max(25, (state.runwayCondition ?? 100) - incident.runwayWear);
+      state.stats.incidents = (state.stats.incidents || 0) + 1;
+      notify(state, 'Incident escalated', `${incident.title} was not resolved in time. Airport reputation and finances have been affected.`, 'warning');
+      state.activeIncident = null;
+      state.nextIncidentAt = state.gameMinutes + 180;
+    }
+    return;
+  }
+  if (state.gameMinutes < (state.nextIncidentAt || state.gameMinutes + 90)) return;
+  const incident = INCIDENT_POOL[(state.stats.incidents + state.flightsCompleted + (state.stats.incidentsResolved || 0)) % INCIDENT_POOL.length];
+  state.activeIncident = { ...incident, remaining: 45, startedAt: state.gameMinutes };
+  state.nextIncidentAt = state.gameMinutes + 225;
+  notify(state, 'Operations alert', incident.title + ': ' + incident.description, 'warning');
+}
+
+export function resolveIncident(state, hasQualifiedTeam = false) {
+  const incident = state.activeIncident;
+  if (!incident) return { ok: false, reason: 'none' };
+  const cost = hasQualifiedTeam ? incident.staffedCost : incident.emergencyCost;
+  if (state.money < cost) return { ok: false, reason: 'funds', cost };
+  addMoney(state, -cost);
+  state.satisfaction = Math.min(100, state.satisfaction + 1.5);
+  state.reputation = Math.min(100, state.reputation + .2);
+  state.stats.incidentsResolved = (state.stats.incidentsResolved || 0) + 1;
+  state.activeIncident = null;
+  state.nextIncidentAt = state.gameMinutes + 225;
+  notify(state, 'Incident resolved', `${incident.title} was handled by ${hasQualifiedTeam ? 'your airport team' : 'an emergency contractor'}.`, 'success');
+  return { ok: true, cost };
+}
+
 function finishFlight(state) {
   const f = state.activeFlight;
   const result = settleFlight(state, f.passengers, f.cargoTons || 0);
   state.cargoTonsHandled = (state.cargoTonsHandled || 0) + (f.cargoTons || 0);
   state.stats.peakPassengers = Math.max(state.stats.peakPassengers, state.passengers);
   state.reputation = Math.min(100, state.reputation + (state.satisfaction > 75 ? .45 : -.2));
-  state.flightHistory.unshift({ id: f.id, airline: f.airline, model: f.model, passengers: f.passengers, net: result.net, time: state.gameMinutes, status: 'Departed' });
+  state.flightHistory.unshift({ id: f.id, airline: f.airline, model: f.model, passengers: f.passengers, cargoTons: f.cargoTons || 0, kind: f.kind || 'regional', destination: f.destination || 'Regional network', net: result.net, time: state.gameMinutes, status: 'Departed' });
+  progressContracts(state, f);
   state.flightHistory = state.flightHistory.slice(0, 20);
   const operation = f.cargoTons ? `${f.cargoTons} tonnes of cargo delivered` : `${f.passengers} passengers served`;
   notify(state, 'Flight departed', `${f.id} took off successfully. ${operation}. Net contribution: €${Math.round(result.net).toLocaleString('en-GB')}.`, 'success');
@@ -110,6 +192,7 @@ export function tickGame(state, realDelta) {
   if (state.speed === 0) return;
   const gameDelta = dt;
   state.gameMinutes += gameDelta;
+  updateIncidents(state, gameDelta);
 
   const hourlyCost = hourlyExpenses(state);
   addMoney(state, -hourlyCost / 60 * gameDelta);
@@ -124,7 +207,8 @@ export function tickGame(state, realDelta) {
 
   state.passengers = Math.max(0, state.passengers - gameDelta * .018);
   const staffTotal = Object.values(state.staff).reduce((a, b) => a + b, 0);
-  const satisfactionTarget = Math.min(97, 75 + staffTotal * 1.3 + state.buildings.filter(b => ['cafe', 'shop', 'terminal'].includes(b.type)).length * 2 + state.research.length * 1.1 + (state.research.includes('smart-security') ? 5 : 0));
+  const serviceBuildings = state.buildings.filter(b => ['cafe', 'shop', 'terminal', 'hotel'].includes(b.type)).length;
+  const satisfactionTarget = Math.min(98, 72 + staffTotal * 1.25 + serviceBuildings * 2.2 + (state.buildings.some(b => b.type === 'hotel') ? 3 : 0) + state.research.length * 1.1 + (state.research.includes('smart-security') ? 5 : 0));
   state.satisfaction += (satisfactionTarget - state.satisfaction) * Math.min(.02, gameDelta * .002);
   if (['Rain', 'Thunderstorm', 'Fog'].includes(state.weather)) {
     state.satisfaction = Math.max(45, state.satisfaction - gameDelta * (state.buildings.some(b => b.type === 'fire') ? .003 : .006));
