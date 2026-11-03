@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "Airport-Tycoon-Arcade-0.2.1.zip"
+      - "Airport-Tycoon-Arcade-0.2.1.part-*"
 
 permissions:
   contents: write
@@ -20,14 +20,15 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Unpack the project into the repository root
+      - name: Reassemble and unpack project
         shell: bash
         run: |
           set -euo pipefail
+          cat Airport-Tycoon-Arcade-0.2.1.part-* | base64 --decode > "$RUNNER_TEMP/airport-tycoon.zip"
           mkdir -p "$RUNNER_TEMP/airport-tycoon-update"
-          unzip -q Airport-Tycoon-Arcade-0.2.1.zip -d "$RUNNER_TEMP/airport-tycoon-update"
+          unzip -q "$RUNNER_TEMP/airport-tycoon.zip" -d "$RUNNER_TEMP/airport-tycoon-update"
           cp -a "$RUNNER_TEMP/airport-tycoon-update/airport-tycoon/." .
-          rm -f Airport-Tycoon-Arcade-0.2.1.zip
+          rm -f Airport-Tycoon-Arcade-0.2.1.part-*
           rm -f .github/workflows/apply-arcade-update.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
