@@ -88,6 +88,59 @@ function makeWing(parent, span, rootChord, tipChord, zCenter, mat) {
   return mesh;
 }
 
+
+function makeRunwaySurfaceMaterial() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#343c45';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let seed = 9137;
+  const random = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+  for (let i = 0; i < 5200; i++) {
+    const alpha = .035 + random() * .12;
+    ctx.fillStyle = random() > .52 ? `rgba(190,202,211,${alpha})` : `rgba(7,13,20,${alpha})`;
+    const size = .5 + random() * 2.2;
+    ctx.fillRect(random() * canvas.width, random() * canvas.height, size * 2.6, size);
+  }
+  for (const x of [255, 770]) {
+    for (const y of [72, 111, 153, 192]) {
+      ctx.strokeStyle = 'rgba(12,17,23,.32)';
+      ctx.lineWidth = 10 + random() * 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x - 31, y + (random() - .5) * 5);
+      ctx.lineTo(x + 27, y + (random() - .5) * 6);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(16,22,29,.30)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x - 23, y + 4);
+      ctx.lineTo(x + 32, y + 2);
+      ctx.stroke();
+    }
+  }
+  for (let i = 0; i < 28; i++) {
+    const x = random() * canvas.width, y = random() * canvas.height;
+    const length = 12 + random() * 54;
+    ctx.strokeStyle = `rgba(13,19,25,${.12 + random() * .18})`;
+    ctx.lineWidth = .7 + random() * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + length * .45, y + (random() - .5) * 7);
+    ctx.lineTo(x + length, y + (random() - .5) * 12);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return new THREE.MeshStandardMaterial({ map: texture, color: '#e0e5e9', roughness: .96, metalness: .01 });
+}
+
 export class AirportWorld {
   constructor(container, onWorldClick, onHover) {
     this.container = container;
@@ -134,7 +187,15 @@ export class AirportWorld {
     this.pointerDown = null;
     this.buildings = new Map();
     this.aircraftMesh = null;
+    this.aircraftKind = null;
     this.aircraftLightTime = 0;
+    this.parkedAircraft = [];
+    this.trafficCars = [];
+    this.trafficPath = null;
+    this.weather = 'Sunny';
+    this.currentGameMinutes = 8 * 60;
+    this.lastLightingMinute = -1;
+    this.seasonIndex = -1;
     this.preview = null;
     this.previewType = null;
     this.previewFootprint = [8, 8];
@@ -147,8 +208,11 @@ export class AirportWorld {
     this.createAirfield();
     this.createTerminal();
     this.createEnvironment();
+    this.createDistrict();
     this.createPedestrians();
     this.createServiceVehicles();
+    this.createParkedAircraft();
+    this.setTimeOfDay(this.currentGameMinutes);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
@@ -164,21 +228,22 @@ export class AirportWorld {
   }
 
   createLights() {
-    this.scene.add(new THREE.HemisphereLight('#f3fbff', '#4c8650', 2.2));
-    const sun = new THREE.DirectionalLight('#fff3d4', 2.55);
-    sun.position.set(-52, 92, 47);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -100; sun.shadow.camera.right = 100;
-    sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100;
-    sun.shadow.camera.near = 1; sun.shadow.camera.far = 240;
-    sun.shadow.bias = -.00012;
-    sun.shadow.normalBias = .025;
-    this.scene.add(sun);
+    this.hemisphereLight = new THREE.HemisphereLight('#f3fbff', '#4c8650', 2.2);
+    this.scene.add(this.hemisphereLight);
+    this.sunLight = new THREE.DirectionalLight('#fff3d4', 2.55);
+    this.sunLight.position.set(-52, 92, 47);
+    this.sunLight.castShadow = true;
+    this.sunLight.shadow.mapSize.set(2048, 2048);
+    this.sunLight.shadow.camera.left = -120; this.sunLight.shadow.camera.right = 120;
+    this.sunLight.shadow.camera.top = 120; this.sunLight.shadow.camera.bottom = -120;
+    this.sunLight.shadow.camera.near = 1; this.sunLight.shadow.camera.far = 260;
+    this.sunLight.shadow.bias = -.00012;
+    this.sunLight.shadow.normalBias = .025;
+    this.scene.add(this.sunLight);
   }
 
   createTerrain() {
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(205, 132), shared.grass);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(245, 190), shared.grass);
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(0, 0, 5);
     ground.receiveShadow = true;
@@ -220,6 +285,11 @@ export class AirportWorld {
     // Main runway: shoulders, asphalt surface, centreline, touchdown zones and edge lights.
     box(this.scene, 94, .30, 16, shared.asphaltEdge, 0, -.015, -16, false);
     box(this.scene, 90, .28, 12.2, shared.asphalt, 0, .16, -16, false);
+    const runwayTexture = new THREE.Mesh(new THREE.PlaneGeometry(90, 12.2), makeRunwaySurfaceMaterial());
+    runwayTexture.rotation.x = -Math.PI / 2;
+    runwayTexture.position.set(0, .306, -16);
+    runwayTexture.receiveShadow = true;
+    this.scene.add(runwayTexture);
     box(this.scene, 88, .035, .16, shared.white, 0, .315, -16, false);
     for (let x = -36; x <= 36; x += 6) {
       box(this.scene, 2.5, .035, .18, shared.white, x, .32, -16, false);
@@ -336,6 +406,111 @@ export class AirportWorld {
     box(shed, 7.3, .45, 5.3, shared.red, 0, 3.25, 0);
     box(shed, 3.2, 2.0, .16, shared.dark, 0, 1.05, -2.58);
     const sign = makeTextLabel('MAINTENANCE', '#fff', [5.2, .8, 1]); sign.position.set(0, 2.6, -2.7); shed.add(sign);
+  }
+
+
+  createDistrict() {
+    const road = material('#39434c', .94);
+    const sidewalk = material('#aab5ad', .95);
+    const lane = material('#f4e8bb', .8);
+    box(this.scene, 198, .18, 7.6, road, 0, .02, -63, false);
+    box(this.scene, 198, .18, 7.6, road, 0, .02, 75, false);
+    box(this.scene, 7.6, .18, 138, road, -98, .02, 6, false);
+    box(this.scene, 7.6, .18, 138, road, 98, .02, 6, false);
+    box(this.scene, 198, .12, 2.0, sidewalk, 0, .08, -69, false);
+    box(this.scene, 198, .12, 2.0, sidewalk, 0, .08, 81, false);
+    box(this.scene, 2.0, .12, 138, sidewalk, -104, .08, 6, false);
+    box(this.scene, 2.0, .12, 138, sidewalk, 104, .08, 6, false);
+    for (let x = -91; x <= 91; x += 12) {
+      box(this.scene, 4.2, .025, .12, lane, x, .125, -63, false);
+      box(this.scene, 4.2, .025, .12, lane, x, .125, 75, false);
+    }
+    for (let z = -54; z <= 66; z += 12) {
+      box(this.scene, .12, .025, 4.2, lane, -98, .125, z, false);
+      box(this.scene, .12, .025, 4.2, lane, 98, .125, z, false);
+    }
+    for (let i = 0; i < 8; i++) {
+      const x = -84 + i * 24;
+      this.addDistrictHouse(x, -80, i);
+      this.addDistrictHouse(x, 91, i + 8);
+    }
+    for (const x of [-78, -42, 42, 78]) {
+      this.addTree(x, -70, .8);
+      this.addTree(x, 82, .82);
+    }
+
+    this.trafficPath = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-96, .12, -63), new THREE.Vector3(-74, .12, -63),
+      new THREE.Vector3(0, .12, -63), new THREE.Vector3(74, .12, -63),
+      new THREE.Vector3(96, .12, -63), new THREE.Vector3(98, .12, -42),
+      new THREE.Vector3(98, .12, 25), new THREE.Vector3(96, .12, 75),
+      new THREE.Vector3(74, .12, 75), new THREE.Vector3(0, .12, 75),
+      new THREE.Vector3(-74, .12, 75), new THREE.Vector3(-96, .12, 75),
+      new THREE.Vector3(-98, .12, 48), new THREE.Vector3(-98, .12, -35)
+    ], true, 'centripetal');
+
+    const carPaints = ['#e85d5d', '#e8edf0', '#307fbd', '#e4a04e', '#41586d', '#5b9b70', '#c9cbd0'];
+    for (let i = 0; i < 10; i++) {
+      const car = new THREE.Group();
+      const paint = material(carPaints[i % carPaints.length], .48, .05);
+      box(car, 1.35, .62, 2.8, paint, 0, .53, 0);
+      box(car, 1.12, .50, 1.42, shared.glass, 0, .99, -.08, false);
+      box(car, 1.18, .12, .52, paint, 0, 1.18, .74);
+      box(car, .22, .12, .16, shared.white, -.43, .63, 1.42, false);
+      box(car, .22, .12, .16, shared.white, .43, .63, 1.42, false);
+      box(car, .18, .12, .16, shared.red, -.43, .63, -1.42, false);
+      box(car, .18, .12, .16, shared.red, .43, .63, -1.42, false);
+      for (const wx of [-.64, .64]) for (const wz of [-.91, .91]) {
+        cylinder(car, .25, .25, .14, shared.rubber, wx, .28, wz, 12, [0, 0, Math.PI / 2]);
+        cylinder(car, .11, .11, .15, shared.silver, wx, .28, wz, 10, [0, 0, Math.PI / 2]);
+      }
+      this.scene.add(car);
+      this.trafficCars.push({ mesh: car, progress: i / 10, speed: .0032 + (i % 3) * .00035 });
+    }
+  }
+
+  addDistrictHouse(x, z, variant = 0) {
+    const house = new THREE.Group();
+    house.position.set(x, 0, z);
+    this.scene.add(house);
+    const walls = ['#e7d9c4', '#d5e1df', '#e7c6b4', '#d7d1bd', '#c8d8e5', '#e8e4d6'];
+    const roofs = ['#536475', '#8d5a4f', '#66765e', '#6c6260'];
+    const wall = material(walls[variant % walls.length]);
+    const roofMat = material(roofs[variant % roofs.length]);
+    const lot = material('#aab5ad', .95);
+    box(house, 12, .28, 10, lot, 0, .14, 0, false);
+    box(house, 8.7, 3.25, 7.4, wall, 0, 1.78, 0);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(6.5, 2.8, 4), roofMat);
+    roof.rotation.y = Math.PI / 4;
+    roof.position.set(0, 4.65, 0);
+    roof.castShadow = true;
+    house.add(roof);
+    box(house, 1.18, 2.0, .16, material('#76513c'), 0, 1.12, -3.79);
+    for (const wx of [-2.6, 2.6]) {
+      box(house, 1.65, 1.25, .14, shared.glass, wx, 2.25, -3.82, false);
+      box(house, 1.75, .12, .18, shared.white, wx, 2.25, -3.9, false);
+    }
+    box(house, 2.6, .16, 1.25, shared.white, 0, 3.03, -4.15);
+    box(house, .62, 1.3, .62, material('#b9b0a1'), 2.6, 5.05, .8);
+    box(house, 3.2, .16, 2.8, material('#b2a38b'), -5.3, .09, 0, false);
+    this.addTree(x - 7.5, z + 1.4, .64 + (variant % 2) * .08);
+    this.addTree(x + 7.2, z + 1.8, .62);
+  }
+
+  createParkedAircraft() {
+    const parked = [
+      { kind: 'jet', x: -16, z: 8.5, yaw: 0 },
+      { kind: 'cargo', x: 20, z: 8.5, yaw: 0 }
+    ];
+    for (const item of parked) {
+      const aircraft = makeAircraft(item.kind);
+      aircraft.position.set(item.x, .94, item.z);
+      aircraft.rotation.y = item.yaw;
+      aircraft.userData.engineRunning = false;
+      aircraft.userData.parkedLightOffset = this.parkedAircraft.length * 1.65;
+      this.scene.add(aircraft);
+      this.parkedAircraft.push(aircraft);
+    }
   }
 
   addTree(x, z, scale = 1) {
@@ -539,10 +714,20 @@ export class AirportWorld {
 
   syncFlight(flight) {
     if (!flight) {
-      if (this.aircraftMesh) { this.scene.remove(this.aircraftMesh); this.aircraftMesh = null; }
+      if (this.aircraftMesh) {
+        this.scene.remove(this.aircraftMesh);
+        this.aircraftMesh = null;
+        this.aircraftKind = null;
+      }
       return;
     }
-    if (!this.aircraftMesh) this.aircraftMesh = makeAircraft();
+    const kind = flight.kind || 'regional';
+    if (!this.aircraftMesh || this.aircraftKind !== kind) {
+      if (this.aircraftMesh) this.scene.remove(this.aircraftMesh);
+      this.aircraftMesh = makeAircraft(kind);
+      this.aircraftKind = kind;
+      this.scene.add(this.aircraftMesh);
+    }
     const p = flight.position || { x: -58, y: 8, z: -16 };
     this.aircraftMesh.position.set(p.x, p.y, p.z);
     this.aircraftMesh.rotation.y = Number.isFinite(flight.yaw) ? flight.yaw : Math.PI / 2;
@@ -553,12 +738,50 @@ export class AirportWorld {
   }
 
   setWeather(weather) {
-    const colors = { Sunny: '#9edcf5', Cloudy: '#aebfcb', Rain: '#8ea6ba', Fog: '#b8c7ca', Snow: '#dceaf1', Thunderstorm: '#758ba0' };
-    const color = colors[weather] || colors.Sunny;
-    this.scene.background = new THREE.Color(color);
-    this.scene.fog.color.set(color);
-    this.scene.fog.near = weather === 'Fog' ? 35 : 150;
-    this.scene.fog.far = weather === 'Fog' ? 130 : 330;
+    this.weather = weather;
+    this.lastLightingMinute = -1;
+    this.setTimeOfDay(this.currentGameMinutes);
+  }
+
+  setTimeOfDay(gameMinutes = 8 * 60) {
+    this.currentGameMinutes = gameMinutes;
+    const minuteKey = Math.floor(gameMinutes);
+    if (minuteKey === this.lastLightingMinute) return;
+    this.lastLightingMinute = minuteKey;
+    const minuteOfDay = ((gameMinutes % 1440) + 1440) % 1440;
+    const hour = minuteOfDay / 60;
+    const daylight = clamp(Math.sin(((hour - 6) / 13) * Math.PI), 0, 1);
+    const dayColors = {
+      Sunny: '#9edcf5', Cloudy: '#aebfcb', Rain: '#8297aa',
+      Fog: '#aebdc0', Snow: '#dceaf1', Thunderstorm: '#687b91'
+    };
+    const sky = new THREE.Color('#122238').lerp(
+      new THREE.Color(dayColors[this.weather] || dayColors.Sunny),
+      .24 + daylight * .76
+    );
+    this.scene.background.copy(sky);
+    this.scene.fog.color.copy(sky);
+    this.scene.fog.near = this.weather === 'Fog' ? 32 : 120 + daylight * 30;
+    this.scene.fog.far = this.weather === 'Fog' ? 130 : 265 + daylight * 65;
+    if (this.sunLight) {
+      this.sunLight.intensity = .18 + daylight * 2.42;
+      this.sunLight.color.set(daylight < .12 ? '#9eb8e8' : '#fff0d2');
+      this.sunLight.position.set(-52 + Math.cos(hour / 24 * Math.PI * 2) * 22, 18 + daylight * 78, 47);
+    }
+    if (this.hemisphereLight) this.hemisphereLight.intensity = .42 + daylight * 1.78;
+    const seasonIndex = Math.floor(gameMinutes / (1440 * 3)) % 4;
+    if (seasonIndex !== this.seasonIndex) {
+      this.seasonIndex = seasonIndex;
+      const seasons = [
+        ['#8acb70', '#71b65a', '#a2df7d'],
+        ['#79c957', '#6fbd4e', '#8edb69'],
+        ['#b59a5e', '#95824e', '#c7b477'],
+        ['#aeb9b7', '#8f9d9b', '#c9d1cc']
+      ];
+      shared.grass.color.set(seasons[seasonIndex][0]);
+      shared.grassDark.color.set(seasons[seasonIndex][1]);
+      shared.grassLight.color.set(seasons[seasonIndex][2]);
+    }
   }
 
   createPedestrians() {
@@ -611,8 +834,19 @@ export class AirportWorld {
   update(delta = 0, simulationRunning = true) {
     this.controls.update();
     const dt = clamp(delta || 0, 0, .05);
-    if (simulationRunning && dt > 0) {
+    if (dt > 0) {
       this.elapsed += dt;
+      if (this.trafficPath) {
+        for (const traffic of this.trafficCars) {
+          traffic.progress = (traffic.progress + traffic.speed * dt) % 1;
+          const point = this.trafficPath.getPointAt(traffic.progress);
+          const tangent = this.trafficPath.getTangentAt(traffic.progress);
+          traffic.mesh.position.set(point.x, point.y, point.z);
+          traffic.mesh.rotation.y = Math.atan2(tangent.x, tangent.z);
+        }
+      }
+    }
+    if (simulationRunning && dt > 0) {
       for (const p of this.passengers) {
         const u = (p.userData.t + p.userData.speed * dt) % 1;
         p.userData.t = u;
@@ -639,6 +873,12 @@ export class AirportWorld {
       this.aircraftMesh.userData.beacon.visible = blink;
       this.aircraftMesh.userData.navRed.visible = blink;
       this.aircraftMesh.userData.navGreen.visible = blink;
+    }
+    for (const aircraft of this.parkedAircraft) {
+      const blink = Math.sin(this.elapsed * 4 + aircraft.userData.parkedLightOffset) > .5;
+      aircraft.userData.beacon.visible = blink;
+      aircraft.userData.navRed.visible = blink;
+      aircraft.userData.navGreen.visible = blink;
     }
     this.renderer.render(this.scene, this.camera);
   }
@@ -691,12 +931,14 @@ function makePassenger(shirtColor, index) {
   return person;
 }
 
-function makeAircraft() {
+function makeAircraft(kind = 'regional') {
   const g = new THREE.Group();
-  const fuselageMat = material('#f7fbfc', .34, .08);
+  const isCargo = kind === 'cargo';
+  const isJet = kind === 'jet' || isCargo;
+  const fuselageMat = material(isCargo ? '#eef1ed' : '#f7fbfc', .34, .08);
   const bellyMat = material('#cbd8e1', .5, .1);
-  const airlineBlue = material('#217bc0', .36, .06);
-  const stripe = material('#ffbd47', .42, .02);
+  const airlineBlue = material(isCargo ? '#df8a37' : kind === 'jet' ? '#196fae' : '#217bc0', .36, .06);
+  const stripe = material(isCargo ? '#f3c86b' : '#ffbd47', .42, .02);
   const darkGlass = new THREE.MeshStandardMaterial({ color: '#24465d', roughness: .16, metalness: .28 });
   const engineMat = material('#8998a4', .31, .35);
 
@@ -715,12 +957,16 @@ function makeAircraft() {
 
   // Cabin windows follow the fuselage curvature on both sides.
   for (const side of [-1, 1]) {
-    for (let z = -3.6; z <= 3.1; z += .48) {
-      const radius = .52 * Math.sqrt(Math.max(.45, 1 - Math.pow(z / 6.0, 2)));
-      sphere(g, .105, darkGlass, side * (radius + .015), .27, z, [.22, .72, .72]);
+    if (!isCargo) {
+      for (let z = -3.6; z <= 3.1; z += .48) {
+        const radius = .52 * Math.sqrt(Math.max(.45, 1 - Math.pow(z / 6.0, 2)));
+        sphere(g, .105, darkGlass, side * (radius + .015), .27, z, [.22, .72, .72]);
+      }
+      box(g, .035, .8, .48, airlineBlue, side * .48, .12, 3.65);
+    } else {
+      box(g, .045, 1.18, 1.55, stripe, side * .51, .03, -.25, false);
+      box(g, .05, .07, 1.42, bellyMat, side * .53, .64, -.25, false);
     }
-    // Passenger door outlines and cockpit side glazing.
-    box(g, .035, .8, .48, airlineBlue, side * .48, .12, 3.65);
     const cockpit = box(g, .055, .27, .76, darkGlass, side * .34, .30, 4.65);
     cockpit.rotation.x = -.08;
   }
@@ -756,10 +1002,12 @@ function makeAircraft() {
     const spinner = new THREE.Mesh(new THREE.ConeGeometry(.19, .45, 16), material('#dce6eb', .3, .18));
     spinner.rotation.x = Math.PI / 2; spinner.position.z = 1.02; engine.add(spinner);
     const prop = new THREE.Group(); prop.position.z = .88; engine.add(prop);
+    if (isJet) { intake.visible = false; spinner.visible = false; }
     for (let i = 0; i < 4; i++) {
       const blade = new THREE.Mesh(new THREE.BoxGeometry(.10, .65, .045), airlineBlue);
       blade.position.y = .36; blade.rotation.z = i * Math.PI / 2 + .28; prop.add(blade);
     }
+    prop.visible = !isJet;
     propellers.push(prop);
   }
 
@@ -794,7 +1042,8 @@ function makeAircraft() {
   g.userData.navRed = navRed;
   g.userData.navGreen = navGreen;
   g.userData.propellers = propellers;
-  g.scale.setScalar(.66);
+  g.userData.kind = kind;
+  g.scale.setScalar(isCargo ? .80 : isJet ? .78 : .72);
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return g;
 }
