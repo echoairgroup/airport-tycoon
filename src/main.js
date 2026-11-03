@@ -1,8 +1,8 @@
 import { AirportWorld } from './world/World.js';
-import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS } from './data.js';
+import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from './data.js';
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, addMoney } from './engine/economy.js';
-import { tickGame, flightPhaseLabel, giveXP } from './engine/simulation.js';
+import { tickGame, flightPhaseLabel, giveXP, resolveIncident } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
 
 let state = INITIAL_STATE();
@@ -143,14 +143,52 @@ function renderPanel() {
   const content=$('panel-content');
   if(!content) return;
   const template={
-    overview:renderOverview, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
-    employees:renderEmployees, passengers:renderPassengers, finances:renderFinances,
+    overview:renderOverview, operations:renderOperations, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    employees:renderEmployees, passengers:renderPassengers, finances:renderFinances, contracts:renderContracts,
     research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
   content.innerHTML=template();
 }
 function panelHeader(kicker,title,desc,action='') { return `<div class="panel-header"><div><div class="panel-kicker">${kicker}</div><h2>${title}</h2><p>${desc}</p></div>${action}</div>`; }
 function statCard(label,value,sub,icon,accent='blue') { return `<div class="stat-card ${accent}"><div class="stat-card-top"><span>${label}</span><b>${icon}</b></div><strong>${value}</strong><small>${sub}</small></div>`; }
+
+function incidentTeamReady(incident) {
+  if (!incident) return false;
+  const roleReady = (state.staff?.[incident.staffRole] || 0) >= incident.minStaff;
+  const facilityReady = !incident.requiredBuilding || state.buildings.some(b => b.type === incident.requiredBuilding);
+  return roleReady && facilityReady;
+}
+function renderIncidentCard() {
+  const incident = state.activeIncident;
+  if (!incident) {
+    const next = Math.max(0, Math.ceil((state.nextIncidentAt || state.gameMinutes + 90) - state.gameMinutes));
+    return \`<div class="incident-clear-card"><span class="incident-symbol">✓</span><div><b>Operations stable</b><small>No active incident · Next review in about \${next} game minutes</small></div><span class="status-pill active">STABLE</span></div>\`;
+  }
+  const ready = incidentTeamReady(incident);
+  const cost = ready ? incident.staffedCost : incident.emergencyCost;
+  return \`<div class="incident-card"><div class="incident-card-top"><span class="incident-symbol">!</span><span class="status-pill warning">ACTION REQUIRED</span><small>\${Math.max(0,Math.ceil(incident.remaining))} GAME MIN LEFT</small></div><b>\${incident.title}</b><p>\${incident.description}</p><div class="incident-response-row"><span>\${ready ? 'Qualified team available' : 'External response required'}</span><button class="primary-small" data-action="respond-incident">DISPATCH · \${fmt(cost)}</button></div></div>\`;
+}
+function renderOperations() {
+  const condition = Math.round(state.runwayCondition ?? 100);
+  const conditionLabel = condition >= 85 ? 'Excellent' : condition >= 65 ? 'Serviceable' : condition >= 45 ? 'Worn' : 'Critical';
+  const status = state.activeFlight ? flightPhaseLabel(state.activeFlight.phase) : 'No active aircraft';
+  const capacities = [
+    ['Passenger processing', 120 + state.buildings.filter(b => b.type === 'terminal').length * 100, 'passengers'],
+    ['Aircraft stands', 1 + extraGates(), 'gates'],
+    ['Cargo facility', state.buildings.some(b => b.type === 'cargo-terminal') ? 'Online' : 'Not built', ''],
+    ['Engineering support', state.buildings.some(b => b.type === 'maintenance') ? 'Online' : 'Basic crew', '']
+  ];
+  return \`\${panelHeader('AIRPORT OPERATIONS','Operations centre','Monitor runway health, incident response, handling capacity and the live operating picture.')}
+    <div class="operations-hero"><div><small>LIVE AIRPORT STATUS</small><strong>\${state.activeIncident ? 'ATTENTION REQUIRED' : 'ALL SYSTEMS STABLE'}</strong><span>\${status}</span></div><span class="operations-live-dot"></span></div>
+    <div class="section-title"><h3>Incident response</h3><span class="muted-label">AIRPORT SAFETY</span></div>\${renderIncidentCard()}
+    <div class="section-title"><h3>Runway integrity</h3><span class="muted-label">09 / 27</span></div>
+    <div class="runway-condition-card"><div class="runway-condition-heading"><b>Surface condition</b><strong>\${condition}%</strong></div><div class="satisfaction-bar"><i style="width:\${condition}%"></i></div><small>\${conditionLabel} · Each landing adds wear. Repairs protect reliability.</small><button class="secondary-small" data-tab="finances">OPEN FINANCES & MAINTENANCE →</button></div>
+    <div class="section-title"><h3>Airport capacity</h3><span class="muted-label">FACILITIES</span></div>
+    <div class="content-card">\${capacities.map(([label,value,unit])=>\`<div class="facility-row"><span>\${label}</span><b>\${value}\${unit ? ' '+unit : ''}</b></div>\`).join('')}</div>
+    <div class="section-title"><h3>Operational readiness</h3><span class="muted-label">STAFF & FACILITIES</span></div>
+    <div class="readiness-list">\${[['Security','security',3,'fire'],['Ground handling','handling',4,null],['Cleaning','cleaning',2,null],['Maintenance','maintenance',2,'maintenance'],['Cargo','cargo',2,'cargo-terminal']].map(([name,role,min,building])=>{const staffed=(state.staff[role]||0)>=min, built=!building||state.buildings.some(b=>b.type===building);return \`<div class="readiness-row"><span>\${name}</span><b class="\${staffed&&built?'good-text':'bad-text'}">\${state.staff[role]||0} staff · \${staffed&&built?'READY':'NEEDS ATTENTION'}</b></div>\`;}).join('')}</div>\`;
+}
+
 function renderOverview() {
   const f=state.activeFlight;
   const objective=state.missionsClaimed.length>=MISSION_DEFS.length?'All starter missions complete':MISSION_DEFS.find(m=>!state.missionsClaimed.includes(m.id))?.title||'Expand your airport';
@@ -158,17 +196,20 @@ function renderOverview() {
   <div class="stat-grid">${statCard('AIRPORT RATING',`${Math.round(state.reputation)}%`,'Public reputation','★','purple')}${statCard('PASSENGERS ON SITE',Math.floor(state.passengers).toLocaleString('en-GB'),'Currently in your airport','♙','teal')}${statCard('FLIGHTS COMPLETED',state.flightsCompleted,'Successful departures','✈','orange')}</div>
   <div class="section-title"><h3>Live operations</h3><span class="live-label"><i></i> LIVE SIMULATION</span></div>
   <div class="flight-live-card">${f?`<div class="flight-route-icon">✈</div><div class="flight-live-main"><div class="flight-label">${f.id} · ${f.airline}</div><strong>${f.model}</strong><p>${flightPhaseLabel(f.phase)} · ${f.passengers} passengers · Gate ${f.gateId==='initial-gate'?'01':String(state.buildings.findIndex(b=>b.id===f.gateId)+2).padStart(2,'0')}</p></div><div class="flight-live-status"><span class="status-pill active">${f.phase==='approach'?'ARRIVING':f.phase==='takeoff'?'DEPARTING':'IN PROGRESS'}</span><small>ETA · LIVE</small></div>`:`<div class="flight-route-icon muted">✈</div><div class="flight-live-main"><div class="flight-label">NO AIRCRAFT CURRENTLY MOVING</div><strong>Next arrival scheduled</strong><p>Expected in ${Math.max(0,Math.ceil(state.nextFlightAt-state.gameMinutes))} game minutes.</p></div><div class="flight-live-status"><span class="status-pill">STANDBY</span></div>`}</div>
+  <div class="section-title"><h3>Operations alerts</h3><span class="muted-label">SAFETY & RELIABILITY</span></div>${renderIncidentCard()}
   <div class="two-col"><div class="content-card"><div class="card-heading"><h3>Airport development</h3><span class="tiny-tag">LEVEL ${state.level}</span></div><div class="objective-row"><span class="objective-icon">⚑</span><div><b>${objective}</b><small>Your next milestone</small></div><button class="text-action" data-tab="missions">VIEW →</button></div><div class="mini-progress"><div style="width:${Math.min(100,state.xp/(state.level*500)*100)}%"></div></div><div class="mini-progress-label"><span>${state.xp} XP</span><span>${state.level*500} XP</span></div></div>
   <div class="content-card"><div class="card-heading"><h3>Airport facilities</h3><span class="tiny-tag">${allBuildings()} BUILT</span></div><div class="facility-row"><span>🛬 Runway</span><b class="good-text">Operational</b></div><div class="facility-row"><span>🏢 Terminal</span><b class="good-text">Operational</b></div><div class="facility-row"><span>🛫 Aircraft gates</span><b>${1+extraGates()} active</b></div><div class="facility-row"><span>♙ Airport employees</span><b>${totalStaff()} on duty</b></div></div></div>
   <div class="section-title"><h3>Recent notifications</h3><span class="muted-label">LATEST EVENTS</span></div><div class="event-list">${state.notifications.slice(0,4).map(n=>`<div class="event-item"><span class="event-dot ${n.type}"></span><div><b>${n.title}</b><small>${n.message}</small></div><time>${timeLabel(n.time||state.gameMinutes)}</time></div>`).join('')||'<div class="empty-state">No new airport events. Everything is quiet.</div>'}</div>`;
 }
 function renderBuild() {
-  const cats=['All','Operations','Passenger','Transport','Safety','Infrastructure'];
+  const cats=['All','Operations','Passenger','Transport','Safety','Infrastructure','Logistics'];
   const items=BUILDINGS.filter(b=>(selectedCategory==='All'||b.category===selectedCategory));
   return `${panelHeader('AIRPORT DEVELOPMENT','Build & expand','Choose a plot in the marked service yard. Buildings have real footprints and cannot overlap infrastructure or other facilities.',`<button class="small-action" data-action="cancel-build">✕ Cancel placement</button>`)}
   <div class="category-tabs">${cats.map(c=>`<button class="category-tab ${selectedCategory===c?'active':''}" data-category="${c}">${c}</button>`).join('')}</div>
   <div class="build-list">${items.map(b=>{const locked=state.level<b.level;const active=selectedBuild===b.id;return `<div class="build-card ${locked?'locked':''} ${active?'selected':''}"><div class="build-icon">${b.icon}</div><div class="build-info"><div class="build-title-row"><b>${b.name}</b>${locked?`<span class="lock-label">LVL ${b.level}</span>`:`<span class="available-label">AVAILABLE</span>`}</div><p>${b.description}</p><div class="build-meta"><span>↗ ${fmt(b.cost)}</span><span>⌁ ${fmt(b.upkeep)}/hr</span><span>⌂ ${b.category}</span></div></div><button class="build-select ${active?'chosen':''}" data-build="${b.id}" ${locked?'disabled':''}>${locked?'LOCKED':active?'SELECTED':'PLACE'}</button></div>`;}).join('')}</div>
-  <div class="info-note"><b>Construction tip</b><span>Buildings need clear land. Runways, taxiways and the terminal access area are reserved. New gates must be placed on the apron.</span></div>`;
+  <div class="section-title"><h3>Your facilities</h3><span class="muted-label">\${state.buildings.length} BUILT · 55% REFUND</span></div>
+  <div class="owned-building-list">\${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=state.activeFlight?.gateId===building.id;return \`<div class="owned-building-row"><div><b>\${def?.icon||'🏗️'} \${building.name||def?.name||building.type}</b><small>\${building.type==='gate'?'Aircraft stand':'Service facility'} · \${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="\${building.id}" \${occupied?'disabled':''}>\${occupied?'IN USE':\`SELL · +\${fmt(refund)}\`}</button></div>\`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
+  <div class="info-note"><b>Construction tip</b><span>Gates belong on the apron. Other facilities belong in the marked service yard. Demolishing a building refunds 55% of its original purchase price. A gate cannot be removed while an aircraft is using it.</span></div>\`;
 }
 function renderFlights() {
   const f=state.activeFlight;
@@ -186,7 +227,7 @@ function renderAircraft() {
   <div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">AIR TRAFFIC TYPES</span></div><div class="catalogue-row"><div class="catalogue-icon">🛩️</div><div><b>ATR 72-600 / Dash 8 Q400</b><small>Regional turboprops · Short-haul passenger flights</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">✈️</div><div><b>Airbus A320neo / Boeing 737-800</b><small>Narrow-body passenger jets · Medium-haul routes</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">📦</div><div><b>Boeing 737-800F / Airbus A330F</b><small>Cargo aircraft · Freight loading and unloading</small></div><span class="status-pill active">IN TRAFFIC</span></div>`;
 }
 function renderEmployees() {
-  const roles=[['security','Security','🛂','Passenger screening and terminal safety'],['handling','Ground handling','🦺','Aircraft turnaround and baggage services'],['cleaning','Cleaning staff','🧹','Terminal cleanliness and comfort'],['maintenance','Maintenance','🔧','Runway and facility reliability']];
+  const roles=[['security','Security','🛂','Passenger screening and terminal safety'],['handling','Ground handling','🦺','Aircraft turnaround and baggage services'],['cleaning','Cleaning staff','🧹','Terminal cleanliness and comfort'],['maintenance','Maintenance','🔧','Runway and facility reliability'],['cargo','Cargo handlers','📦','Freight loading, warehouse and cargo turnaround']];
   return `${panelHeader('HUMAN RESOURCES','Employees','Hire and manage the team that keeps your airport running.')}
   <div class="employee-summary"><div><small>TOTAL STAFF</small><b>${totalStaff()}</b></div><div><small>WAGE COST / HR</small><b>${fmt(totalStaff()*55)}</b></div><div><small>STAFF EFFICIENCY</small><b>${Math.min(100,Math.round(55+totalStaff()*3))}%</b></div></div>
   <div class="employee-list">${roles.map(([id,name,icon,desc])=>`<div class="employee-card"><div class="employee-icon">${icon}</div><div class="employee-info"><b>${name}</b><small>${desc}</small><span>${fmt(state.staff[id]*55)} / hour · 55 € per employee</span></div><div class="employee-count"><button data-staff="${id}" data-delta="-1" ${state.staff[id]<=0?'disabled':''}>−</button><b>${state.staff[id]}</b><button data-staff="${id}" data-delta="1">＋</button></div></div>`).join('')}</div>
@@ -216,6 +257,30 @@ function renderResearch() {
   <div class="info-note"><b>Research benefits</b><span>Research advances in game time. Only one project can run at a time. Completed technologies remain active for the rest of your save.</span></div>`;
 }
 
+
+function renderContracts() {
+  const active = state.activeContracts || [];
+  const completed = state.completedContracts || [];
+  return \`\${panelHeader('AIRLINE RELATIONS','Contracts & partnerships','Sign service agreements with airlines and local partners. Complete their requirements to earn major rewards.')}
+    <div class="contract-overview"><div><small>ACTIVE AGREEMENTS</small><strong>\${active.length} / 2</strong></div><div><small>COMPLETED</small><strong>\${state.contractsCompleted || 0}</strong></div><div><small>CONTRACT INCOME</small><strong>\${fmt(state.contractIncome || 0)}</strong></div></div>
+    <div class="section-title"><h3>Available agreements</h3><span class="muted-label">SELECT UP TO TWO</span></div>
+    <div class="contract-list">\${CONTRACT_DEFS.map(contract=>{
+      const running=active.find(c=>c.id===contract.id);
+      const done=completed.includes(contract.id);
+      const facilityReady=!contract.requiredBuilding||state.buildings.some(b=>b.type===contract.requiredBuilding);
+      const unlocked=state.level>=contract.level&&facilityReady;
+      const full=active.length>=2;
+      const detail=contract.kind==='cargo'?'Freight operations':contract.kind==='passenger'?'Passenger services':'Airport-wide performance';
+      return \`<article class="contract-card \${running?'contract-active':''} \${done?'contract-complete':''}">
+        <div class="contract-card-top"><span class="contract-icon">\${contract.icon}</span><span class="contract-client">\${contract.client}</span><span class="contract-state">\${done?'COMPLETED':running?'ACTIVE':unlocked?'AVAILABLE':!facilityReady?'FACILITY REQUIRED':\`LEVEL \${contract.level}\`}</span></div>
+        <h3>\${contract.name}</h3><p>\${contract.description}</p>
+        <div class="contract-progress"><div><span>\${detail}</span><b>\${running?\`\${running.progress || 0} / \${contract.target}\`:done?\`\${contract.target} / \${contract.target}\`:\`0 / \${contract.target}\`}</b></div><i><span style="width:\${running?Math.min(100,(running.progress||0)/contract.target*100):done?100:0}%"></span></i></div>
+        <div class="contract-footer"><strong>\${fmt(contract.reward)} <small>+ \${contract.xp} XP</small></strong>\${done?'<span class="status-pill active">PAID</span>':running?'<span class="status-pill active">IN PROGRESS</span>':\`<button class="primary-small" data-accept-contract="\${contract.id}" \${!unlocked||full?'disabled':''}>\${!facilityReady?'BUILD FACILITY':!unlocked?\`LEVEL \${contract.level}\`:full?'CONTRACT LIMIT':'SIGN AGREEMENT'}</button>\`}</div>
+      </article>\`;
+    }).join('')}</div>
+    <div class="info-note"><b>Contract strategy</b><span>Contracts are optional but pay more than ordinary flight handling. Cargo agreements require a Cargo Terminal. Completing a contract frees one of your two active slots.</span></div>\`;
+}
+
 function renderGuide() {
   return `${panelHeader('LEARNING CENTRE','Tutorial & airport guide','Start the simple beginner tour or use this complete reference while you play.')}
     <div class="guide-mode-grid">
@@ -229,6 +294,9 @@ function renderGuide() {
     <div class="guide-section"><h3>5. Build and expand</h3><p>Open Build, choose a category and select a facility. Move the preview over the map and click to construct it. Green means the location is valid; red means it is blocked. Gates belong on the apron; most other buildings belong in the marked service yard. Press <kbd>Esc</kbd> or Cancel to stop placing a building.</p></div>
     <div class="guide-section"><h3>6. Finance and maintenance</h3><p>Flight fees, passengers, cafés, shops and parking create income. Staff wages, airport operations and building upkeep create expenses. Landings slowly wear the runway. Open Finances to check its condition and pay for repairs before wear becomes expensive.</p></div>
     <div class="guide-section"><h3>7. Weather, time and seasons</h3><p>The airport clock advances while the simulation runs. The lighting changes through daylight, dusk and night. The landscape cycles through spring, summer, autumn and winter. Weather can shift between sun, cloud, rain, fog, snow and thunderstorms.</p></div>
+    <div class="guide-section"><h3>8. Airline contracts</h3><p>Open Contracts to sign up to two agreements at once. Passenger and freight agreements track completed flights that meet their requirements. Rewards are paid automatically when the target is reached. Some agreements require a Cargo Terminal or a higher airport level.</p></div>
+    <div class="guide-section"><h3>9. Incidents and emergency response</h3><p>Operational alerts can create baggage backlogs, medical assistance calls, runway debris inspections or freight delays. Respond before the countdown expires. The correct staff levels and facilities reduce response costs; an external contractor can be used when your own team is not ready. Ignored incidents affect cash, reputation and passenger satisfaction.</p></div>
+    <div class="guide-section"><h3>10. Facility ownership</h3><p>The Build screen lists your owned buildings. You can demolish an additional facility for a 55% refund. Gates cannot be removed while an aircraft is using them. Specialist facilities include a Cargo Terminal, Airport Hotel and Engineering Depot.</p></div>
     <div class="guide-footnote">Tip: save regularly with the disk button in the top bar. Your airport is stored in this browser.</div>`;
 }
 
@@ -242,7 +310,8 @@ function renderMissions() {
 }
 function renderStatistics() {
   return `${panelHeader('AIRPORT ANALYTICS','Statistics','Long-term performance indicators for your growing airport.')}
-  <div class="stat-grid">${statCard('FLIGHTS COMPLETED',state.flightsCompleted,'Successful departures','✈','blue')}${statCard('PASSENGERS SERVED',state.totalPassengers.toLocaleString('en-GB'),'Lifetime total','♙','teal')}${statCard('CONSTRUCTIONS',state.stats.constructions,'Facilities placed','＋','purple')}</div>
+  <div class="stat-grid">${statCard('FLIGHTS COMPLETED',state.flightsCompleted,'Successful departures','✈','blue')}${statCard('PASSENGERS SERVED',state.totalPassengers.toLocaleString('en-GB'),'Lifetime total','♙','teal')}${statCard('CARGO HANDLED',`${(state.cargoTonsHandled||0).toLocaleString('en-GB')} t`,'Freight throughput','📦','orange')}</div>
+  <div class="stat-grid">${statCard('CONTRACTS COMPLETED',state.contractsCompleted||0,'Airline partnerships','🤝','teal')}${statCard('INCIDENTS RESOLVED',state.stats.incidentsResolved||0,'Successful responses','✓','purple')}${statCard('FACILITIES BUILT',state.buildings.length,'Constructed assets','＋','blue')}</div>
   <div class="two-col"><div class="content-card"><div class="card-heading"><h3>Airport profile</h3></div><div class="facility-row"><span>Airport level</span><b>${state.level}</b></div><div class="facility-row"><span>Reputation</span><b>${Math.round(state.reputation)}%</b></div><div class="facility-row"><span>Passenger satisfaction</span><b>${Math.round(state.satisfaction)}%</b></div><div class="facility-row"><span>Research completed</span><b>${state.research.length}</b></div></div><div class="content-card"><div class="card-heading"><h3>Financial profile</h3></div><div class="facility-row"><span>Lifetime revenue</span><b>${fmt(state.lifetimeRevenue)}</b></div><div class="facility-row"><span>Lifetime expenses</span><b>${fmt(state.lifetimeExpenses)}</b></div><div class="facility-row"><span>Net lifetime result</span><b class="${state.lifetimeRevenue>=state.lifetimeExpenses?'good-text':'bad-text'}">${fmt(state.lifetimeRevenue-state.lifetimeExpenses)}</b></div><div class="facility-row"><span>Retail income</span><b>${fmt(state.retailIncome+state.parkingIncome)}</b></div></div></div>`;
 }
 function renderSettings() {
@@ -313,6 +382,42 @@ function handlePanelClick(e) {
   const staff=e.target.closest('[data-staff]');if(staff){const role=staff.dataset.staff,delta=Number(staff.dataset.delta);if(delta>0){const cost=1250;if(state.money<cost){notifyLocal('Not enough funds',`Hiring costs ${fmt(cost)}.`,'warning');return;}addMoney(state,-cost);state.staff[role]++;notifyLocal('Employee hired',`${role[0].toUpperCase()+role.slice(1)} staff increased to ${state.staff[role]}.`,'success');}else{if(state.staff[role]<=0)return;state.staff[role]--;notifyLocal('Employee released',`${role[0].toUpperCase()+role.slice(1)} staff reduced to ${state.staff[role]}.`,'info');}renderPanel();refreshHUD();return;}
   const research=e.target.closest('[data-research]');if(research){const r=RESEARCH.find(x=>x.id===research.dataset.research);if(!r||state.research.includes(r.id)||state.researchInProgress)return;if(state.money<r.cost){notifyLocal('Not enough funds',`Research requires ${fmt(r.cost)}.`,'warning');return;}addMoney(state,-r.cost);state.researchInProgress={id:r.id,remaining:r.duration};notifyLocal('Research started',`${r.name} is now in development.`,'success');renderPanel();refreshHUD();return;}
   const claim=e.target.closest('[data-claim]');if(claim){const m=MISSION_DEFS.find(x=>x.id===claim.dataset.claim);if(!m||state.missionsClaimed.includes(m.id)||missionProgress(m)<m.goal)return;state.missionsClaimed.push(m.id);addMoney(state,m.reward);giveXP(state,m.xp);notifyLocal('Mission completed',`${m.title}: ${fmt(m.reward)} and ${m.xp} XP earned.`,'success');renderPanel();refreshHUD();return;}
+
+  const contractButton=e.target.closest('[data-accept-contract]');
+  if(contractButton){
+    const contract=CONTRACT_DEFS.find(item=>item.id===contractButton.dataset.acceptContract);
+    if(!contract||state.activeContracts.some(item=>item.id===contract.id)||state.completedContracts.includes(contract.id))return;
+    if(state.activeContracts.length>=2){notifyLocal('Contract limit reached','Complete an active agreement before signing another.','warning');return;}
+    if(state.level<contract.level){notifyLocal('Airport level too low',\`This agreement unlocks at level \${contract.level}.\`,'warning');return;}
+    if(contract.requiredBuilding&&!state.buildings.some(b=>b.type===contract.requiredBuilding)){notifyLocal('Facility required','Build the Cargo Terminal before signing this agreement.','warning');return;}
+    state.activeContracts.push({...contract,progress:0});
+    notifyLocal('Partnership signed',\`\${contract.client} has awarded your airport a new service agreement.\`,'success');
+    renderPanel();saveNow(false);return;
+  }
+  const demolish=e.target.closest('[data-demolish]');
+  if(demolish){
+    const building=state.buildings.find(item=>item.id===demolish.dataset.demolish);
+    if(!building)return;
+    if(state.activeFlight?.gateId===building.id){notifyLocal('Gate in use','Wait until the aircraft has departed before removing this gate.','warning');return;}
+    const definition=BUILDINGS.find(item=>item.id===building.type);
+    const refund=Math.floor((definition?.cost||0)*.55);
+    confirmModal('Demolish this facility?',\`This will remove \${building.name||definition?.name||building.type} and refund \${fmt(refund)} (55% of its purchase price).\`,'Demolish & refund',()=>{
+      if(!world.removeBuilding(building.id)){notifyLocal('Could not remove building','The 3D facility could not be found.','warning');return;}
+      state.buildings=state.buildings.filter(item=>item.id!==building.id);
+      addMoney(state,refund);
+      notifyLocal('Facility demolished',\`\${building.name||definition?.name||building.type} removed. \${fmt(refund)} refunded.\`,'success');
+      renderPanel();refreshHUD();saveNow(false);
+    });
+    return;
+  }
+  const incidentAction=e.target.closest('[data-action="respond-incident"]');
+  if(incidentAction){
+    const result=resolveIncident(state,incidentTeamReady(state.activeIncident));
+    if(!result.ok)notifyLocal(result.reason==='funds'?'Insufficient funds':'No active incident',result.reason==='funds'?\`Response requires \${fmt(result.cost)}.\`:'There is no incident to resolve.','warning');
+    else notifyLocal('Response team dispatched','Airport incident contained successfully.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+
   const tutorial=e.target.closest('[data-tutorial]');
   if(tutorial){
     const action=tutorial.dataset.tutorial;
@@ -406,7 +511,7 @@ function animate(now) {
       state.researchInProgress.remaining-=realDelta*state.speed;
       if(state.researchInProgress.remaining<=0){const r=RESEARCH.find(x=>x.id===state.researchInProgress.id);state.research.push(r.id);state.researchInProgress=null;notifyLocal('Research completed',`${r.name}: ${r.description}`,'success');renderPanel();}
     }
-    if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(currentTab==='missions'||currentTab==='overview'||currentTab==='flights')renderPanel();state._lastPanelTick=state.gameMinutes;}
+    if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(['missions','overview','flights','operations','contracts','finances'].includes(currentTab))renderPanel();state._lastPanelTick=state.gameMinutes;}
     if(oldWeather!==state.weather)world.setWeather(state.weather);
     world.setTimeOfDay(state.gameMinutes);
     world.syncFlight(state.activeFlight);
