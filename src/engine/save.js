@@ -63,7 +63,7 @@ function migrateV3(parsed) {
   const defaults = {
     version: 3,
     staff: { security: 2, handling: 3, cleaning: 1, maintenance: 1, cargo: 1 },
-    activeContracts: [], completedContracts: [], contractsCompleted: 0,
+    activeContracts: [], completedContracts: [], contractsCompleted: 0, contractIncome: 0,
     activeIncident: null, nextIncidentAt: (parsed.gameMinutes || 480) + 90,
     cargoTonsHandled: 0, runwayCondition: 100,
     stats: { constructions: 0, incidents: 0, incidentsResolved: 0, takeoffs: 0, landings: 0, peakPassengers: 0 }
