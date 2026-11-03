@@ -3,6 +3,10 @@
 A browser-based, single-player airport tycoon game built with Vite and Three.js.
 This update is a visual and gameplay pass over the first playable foundation.
 
+## GitHub Pages and styling
+
+The HTML loads both stylesheets directly from `src/` using relative paths. This supports the normal Vite production build and the repository-root Pages fallback. The source entry point and all asset paths are relative, so the project also works below the `/airport-tycoon/` project path.
+
 ## Run locally
 
 1. Install Node.js 20.19+ (or 22.12+).

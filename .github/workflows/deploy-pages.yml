@@ -59,7 +59,7 @@ jobs:
         shell: bash
         run: |
           test -s dist/index.html
-          CSS_PATH="$(grep -oE 'href="[^"]+\\.css"' dist/index.html | head -n 1 | cut -d '"' -f 2)"
+          CSS_PATH="$(grep -oE 'href="[^"]+[.]css"' dist/index.html | head -n 1 | cut -d '"' -f 2)"
           test -n "$CSS_PATH"
           CSS_FILE="dist/${CSS_PATH#./}"
           test -s "$CSS_FILE"
