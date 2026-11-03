@@ -22,19 +22,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Restore the complete game source
+      - name: Restore the complete game source when needed
         shell: bash
         run: |
-          cat .github/source.part-* | base64 --decode > /tmp/airport-tycoon-source.tar.xz
-          tar -xJf /tmp/airport-tycoon-source.tar.xz -C .
-          rm -f .github/source.part-*
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Restore Airport Tycoon Arcade source and CSS"
-            git push origin HEAD:main
+          if compgen -G ".github/source.part-*" > /dev/null; then
+            cat .github/source.part-* | base64 --decode > /tmp/airport-tycoon-source.tar.xz
+            tar -xJf /tmp/airport-tycoon-source.tar.xz -C .
+            rm -f .github/source.part-*
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "Restore Airport Tycoon Arcade source and CSS"
+              git push origin HEAD:main
+            fi
           fi
+          test -f src/main.js
+          test -f src/style.css
+          test -f src/arcade-overrides.css
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
