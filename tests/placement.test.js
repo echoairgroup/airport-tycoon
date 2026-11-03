@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getPlacementStatus } from '../src/engine/placement.js';
+import { INITIAL_STATE } from '../src/data.js';
+import { hourlyExpenses, settleFlight } from '../src/engine/economy.js';
 
 test('allows a facility on a clear service-yard plot', () => {
   assert.equal(getPlacementStatus('cafe', 0, 39).valid, true);
@@ -59,4 +61,22 @@ test('prevents duplicate runway extensions on the same end', () => {
   const result = getPlacementStatus('runway', 68, -16, [{ type: 'runway', x: 68, z: -16 }]);
   assert.equal(result.valid, false);
   assert.match(result.reason, /already occupies/i);
+});
+
+
+test('runway wear increases hourly operating expenses', () => {
+  const healthy = INITIAL_STATE();
+  const worn = INITIAL_STATE();
+  worn.runwayCondition = 55;
+  assert.ok(hourlyExpenses(worn) > hourlyExpenses(healthy));
+});
+
+test('cargo flights add freight revenue without counting passengers', () => {
+  const standard = INITIAL_STATE();
+  const freight = INITIAL_STATE();
+  const baseRevenue = settleFlight(standard, 0, 0).revenue;
+  const cargoRevenue = settleFlight(freight, 0, 20).revenue;
+  assert.equal(cargoRevenue - baseRevenue, 20 * 620);
+  assert.equal(freight.totalPassengers, 0);
+  assert.equal(freight.flightsCompleted, 1);
 });
