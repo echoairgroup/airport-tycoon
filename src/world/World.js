@@ -1,0 +1,800 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const material = (color, roughness = 0.76, metalness = 0) => new THREE.MeshStandardMaterial({
+  color, roughness, metalness, flatShading: true,
+});
+const shared = {
+  grass: material('#79c957'), grassDark: material('#6fbd4e'), grassLight: material('#8edb69'),
+  asphalt: material('#3c4654'), asphaltEdge: material('#596575'), taxi: material('#727f89'),
+  concrete: material('#c9d4d8'), white: material('#fffdf5'), yellow: material('#ffdc53'),
+  glass: new THREE.MeshStandardMaterial({ color: '#8ee6f4', roughness: .2, metalness: .12 }),
+  blue: material('#3c9cde'), blueDark: material('#23669f'), roof: material('#f2f5ed'),
+  orange: material('#ff9d42'), green: material('#63bf62'), dark: material('#27384c'),
+  red: material('#e85d5d'), purple: material('#8d75d7'), silver: material('#aebdc8'),
+  rubber: material('#202b35'),
+};
+
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+function box(parent, w, h, d, mat, x, y, z, cast = true, receive = true) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = cast;
+  mesh.receiveShadow = receive;
+  parent.add(mesh);
+  return mesh;
+}
+function cylinder(parent, radiusTop, radiusBottom, height, mat, x, y, z, segments = 16, rotation = null) {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments), mat);
+  mesh.position.set(x, y, z);
+  if (rotation) mesh.rotation.set(...rotation);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+function sphere(parent, radius, mat, x, y, z, scale = null) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 10), mat);
+  mesh.position.set(x, y, z);
+  if (scale) mesh.scale.set(...scale);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+function tube(parent, points, color, radius = .08) {
+  const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
+  const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, points.length * 8), radius, 7, false), material(color));
+  mesh.castShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+function makeTextLabel(text, color = '#ffffff', scale = [5, 1.25, 1]) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 512, 128);
+  ctx.fillStyle = color;
+  ctx.font = '900 64px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(15,40,65,.45)';
+  ctx.shadowBlur = 8;
+  ctx.fillText(text, 256, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+  sprite.scale.set(...scale);
+  return sprite;
+}
+function makeWing(parent, span, rootChord, tipChord, zCenter, mat) {
+  const shape = new THREE.Shape();
+  const half = span / 2;
+  // Shape Y is reversed because the extrusion is rotated onto the aircraft's X/Z plane.
+  shape.moveTo(-half, -(zCenter + tipChord * .42));
+  shape.lineTo(-half, -(zCenter - tipChord * .58));
+  shape.lineTo(-half * .72, -(zCenter - rootChord * .52));
+  shape.lineTo(half * .72, -(zCenter - rootChord * .52));
+  shape.lineTo(half, -(zCenter - tipChord * .58));
+  shape.lineTo(half, -(zCenter + tipChord * .42));
+  shape.lineTo(half * .72, -(zCenter + rootChord * .48));
+  shape.lineTo(-half * .72, -(zCenter + rootChord * .48));
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: .19, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: .055, bevelThickness: .05, curveSegments: 3 });
+  geo.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh);
+  return mesh;
+}
+
+export class AirportWorld {
+  constructor(container, onWorldClick, onHover) {
+    this.container = container;
+    this.onWorldClick = onWorldClick;
+    this.onHover = onHover;
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color('#9edcf5');
+    this.scene.fog = new THREE.Fog('#9edcf5', 150, 330);
+
+    const aspect = Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight);
+    this.camera = new THREE.OrthographicCamera(-48 * aspect, 48 * aspect, 48, -48, .1, 550);
+    this.camera.position.set(70, 83, 72);
+    this.camera.zoom = 1.06;
+    this.camera.updateProjectionMatrix();
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.domElement.className = 'airport-canvas';
+    this.container.appendChild(this.renderer.domElement);
+
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.target.set(0, 0, 13);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = .075;
+    this.controls.enablePan = true;
+    this.controls.panSpeed = .72;
+    this.controls.rotateSpeed = .62;
+    this.controls.minPolarAngle = .34;
+    this.controls.maxPolarAngle = Math.PI * .46;
+    this.controls.minZoom = .62;
+    this.controls.maxZoom = 2.05;
+    this.controls.minDistance = 48;
+    this.controls.maxDistance = 190;
+    this.controls.screenSpacePanning = false;
+
+    this.raycaster = new THREE.Raycaster();
+    this.pointer = new THREE.Vector2();
+    this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    this.pointerDown = null;
+    this.buildings = new Map();
+    this.aircraftMesh = null;
+    this.aircraftLightTime = 0;
+    this.preview = null;
+    this.previewType = null;
+    this.previewFootprint = [8, 8];
+    this.passengers = [];
+    this.tug = null;
+    this.elapsed = 0;
+
+    this.createLights();
+    this.createTerrain();
+    this.createAirfield();
+    this.createTerminal();
+    this.createEnvironment();
+    this.createPedestrians();
+    this.createServiceVehicles();
+
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(this.container);
+    this._onPointerDown = e => { this.pointerDown = { x: e.clientX, y: e.clientY, button: e.button }; };
+    this._onPointerMove = e => this.handlePointerMove(e);
+    this._onPointerUp = e => this.handlePointerUp(e);
+    this._onContextMenu = e => e.preventDefault();
+    this.renderer.domElement.addEventListener('pointerdown', this._onPointerDown);
+    this.renderer.domElement.addEventListener('pointermove', this._onPointerMove);
+    this.renderer.domElement.addEventListener('pointerup', this._onPointerUp);
+    this.renderer.domElement.addEventListener('contextmenu', this._onContextMenu);
+    this.resize();
+  }
+
+  createLights() {
+    this.scene.add(new THREE.HemisphereLight('#f3fbff', '#4c8650', 2.2));
+    const sun = new THREE.DirectionalLight('#fff3d4', 2.55);
+    sun.position.set(-52, 92, 47);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -100; sun.shadow.camera.right = 100;
+    sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 240;
+    sun.shadow.bias = -.00012;
+    sun.shadow.normalBias = .025;
+    this.scene.add(sun);
+  }
+
+  createTerrain() {
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(205, 132), shared.grass);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(0, 0, 5);
+    ground.receiveShadow = true;
+    ground.name = 'ground';
+    this.scene.add(ground);
+
+    // Soft mowing stripes and a clean arcade-style build yard.
+    for (let i = 0; i < 22; i++) {
+      const x = -86 + i * 8;
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 126), i % 2 ? shared.grassDark : shared.grassLight);
+      stripe.rotation.x = -Math.PI / 2;
+      stripe.position.set(x, .015, 5);
+      stripe.receiveShadow = true;
+      this.scene.add(stripe);
+    }
+    const yard = new THREE.Mesh(new THREE.PlaneGeometry(112, 17), material('#8bd36a'));
+    yard.rotation.x = -Math.PI / 2;
+    yard.position.set(0, .015, 38.4);
+    yard.receiveShadow = true;
+    this.scene.add(yard);
+    for (let x = -53; x <= 53; x += 10) {
+      const tile = new THREE.Mesh(new THREE.PlaneGeometry(.12, 16.6), material('#a8e187'));
+      tile.rotation.x = -Math.PI / 2; tile.position.set(x, .075, 38.4); this.scene.add(tile);
+    }
+    for (let z = 31; z <= 46; z += 5) {
+      const tile = new THREE.Mesh(new THREE.PlaneGeometry(110, .12), material('#a8e187'));
+      tile.rotation.x = -Math.PI / 2; tile.position.set(0, .075, z); this.scene.add(tile);
+    }
+
+    // Airport perimeter fence and entry road are grounded on the same terrain plane.
+    for (let x = -100; x <= 100; x += 5) {
+      cylinder(this.scene, .055, .055, 1.25, material('#e4eee9'), x, .625, 55, 6);
+    }
+    box(this.scene, 205, .12, .12, material('#d8e7dd'), 0, .68, 55, false);
+    box(this.scene, 205, .12, .12, material('#d8e7dd'), 0, .68, -52, false);
+  }
+
+  createAirfield() {
+    // Main runway: shoulders, asphalt surface, centreline, touchdown zones and edge lights.
+    box(this.scene, 94, .30, 16, shared.asphaltEdge, 0, -.015, -16, false);
+    box(this.scene, 90, .28, 12.2, shared.asphalt, 0, .16, -16, false);
+    box(this.scene, 88, .035, .16, shared.white, 0, .315, -16, false);
+    for (let x = -36; x <= 36; x += 6) {
+      box(this.scene, 2.5, .035, .18, shared.white, x, .32, -16, false);
+    }
+    for (const x of [-42, 42]) {
+      for (let z = -21.4; z <= -10.6; z += 2.15) {
+        sphere(this.scene, .16, material('#fff4b5', .28, .15), x, .42, z, [.8, .65, .8]);
+      }
+    }
+    // Threshold bars and runway designator plates.
+    for (const x of [-39, 39]) {
+      for (let i = -4; i <= 4; i++) box(this.scene, .28, .035, 1.7, shared.white, x, .32, -16 + i * 1.1, false);
+    }
+    const rwyNumber = makeTextLabel('09', '#fffdf5', [3.4, .9, 1]);
+    rwyNumber.position.set(-34.5, .36, -16); rwyNumber.rotation.y = Math.PI / 2; this.scene.add(rwyNumber);
+    const rwyNumber2 = makeTextLabel('27', '#fffdf5', [3.4, .9, 1]);
+    rwyNumber2.position.set(34.5, .36, -16); rwyNumber2.rotation.y = Math.PI / 2; this.scene.add(rwyNumber2);
+
+    // High-visibility taxiway and a wide apron slab.
+    box(this.scene, 72, .18, 6.6, shared.taxi, 0, .01, -3.3, false);
+    box(this.scene, 6.8, .18, 18, shared.taxi, 24, .01, -12.6, false);
+    box(this.scene, 58, .22, 25, shared.concrete, 0, -.005, 9.3, false);
+    box(this.scene, 55, .15, 22, material('#aebcc3'), 0, .12, 9.3, false);
+
+    tube(this.scene, [[-34, .13, -3.3], [0, .13, -3.3], [23, .13, -3.3], [24, .13, -12.8]], '#ffe071', .15);
+    tube(this.scene, [[24, .13, -12.8], [24, .13, -18]], '#ffe071', .15);
+    tube(this.scene, [[-22, .22, 7.5], [-8, .22, 7.5], [8, .22, 7.5], [22, .22, 7.5]], '#f7e5a2', .10);
+    // Apron stand markings, stop bars and guidance lines.
+    for (const x of [-16, -4, 8, 20]) this.addStandMarking(x, 8.5, x === 8 ? '01' : String(Math.round((x + 16) / 12 + 1)).padStart(2, '0'));
+    for (const x of [-30, -24, -18, -12, -6, 0, 6, 12, 18, 24, 30]) {
+      box(this.scene, .12, .04, .16, shared.yellow, x, .235, -3.3, false);
+    }
+
+    // Pedestrian walkway from the terminal entrance to the gate stands.
+    box(this.scene, 24, .11, 3.2, material('#dce5df'), 2, .19, 13.7, false);
+    for (let x = -8; x <= 12; x += 2) box(this.scene, .12, .035, 2.65, shared.white, x, .26, 13.7, false);
+    // Service road on the back edge of the airport.
+    box(this.scene, 118, .18, 4.8, material('#606e79'), 0, -.06, 49.2, false);
+    tube(this.scene, [[-58, .06, 49.2], [58, .06, 49.2]], '#f9e28d', .07);
+
+    // Runway approach lights beyond both ends.
+    for (const side of [-1, 1]) {
+      for (let i = 1; i <= 6; i++) {
+        const x = side * (44 + i * 2.4);
+        box(this.scene, .18, .12, .18, material('#f4ffff', .25, .2), x, .1, -16, false);
+      }
+    }
+  }
+
+  createTerminal() {
+    const g = new THREE.Group();
+    g.position.set(0, 0, 21);
+    this.scene.add(g);
+    // Main hall: stepped roof, glass curtain wall, colourful fascia and entrance canopy.
+    box(g, 28, 5.2, 10.4, material('#f4f6f1'), 0, 2.6, 0);
+    box(g, 28.8, .52, 10.8, shared.blue, 0, 5.1, 0);
+    box(g, 25.2, .42, 9.2, material('#e8f1f0'), 0, 5.57, .1);
+    box(g, 26.4, 3.55, .2, shared.glass, 0, 2.45, -5.31, false);
+    for (let x = -12; x <= 12; x += 3) {
+      box(g, .15, 3.75, .25, shared.blueDark, x, 2.4, -5.45, false);
+      box(g, 1.9, .11, .22, material('#e8fbff'), x, 4.22, -5.48, false);
+    }
+    box(g, 4.6, 2.9, .24, shared.blueDark, 0, 1.55, -5.48, false);
+    box(g, 4.0, 2.5, .12, shared.glass, 0, 1.7, -5.64, false);
+    box(g, 11, .34, 2.6, shared.orange, 0, 3.85, -6.35);
+    for (const x of [-4.8, 4.8]) cylinder(g, .12, .12, 3.7, shared.dark, x, 1.95, -6.85, 10);
+
+    // Roof skylights and an oversized arcade-style terminal sign.
+    for (let x = -9; x <= 9; x += 4.5) {
+      box(g, 2.8, .08, 5.0, shared.glass, x, 5.83, .25, false);
+    }
+    box(g, 7.1, .9, .22, shared.dark, 0, 4.55, -5.54, false);
+    const sign = makeTextLabel('SKYPORT', '#fffdf5', [6.1, 1.0, 1]);
+    sign.position.set(0, 4.55, -5.72); g.add(sign);
+
+    // Rounded terminal wings and rooftop air-conditioning pods.
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Group(); wing.position.set(side * 13.4, 0, .2); g.add(wing);
+      box(wing, 5.2, 3.4, 7.1, material('#e4ecea'), 0, 1.7, 1.1);
+      box(wing, 5.45, .38, 7.3, side < 0 ? shared.orange : shared.green, 0, 3.52, 1.1);
+      box(wing, 4.8, 2.25, .13, shared.glass, 0, 1.95, -2.5, false);
+      box(wing, 2.8, .45, 2.6, shared.silver, 0, 3.85, 1.1);
+    }
+    // Front planters and benches.
+    for (const x of [-16, 16]) {
+      box(g, 2.4, .45, 2.4, material('#c2d8ae'), x, .22, -7.6);
+      sphere(g, 1.1, material('#48a85b'), x, .9, -7.6, [1, .8, 1]);
+    }
+    for (let x = -7; x <= 7; x += 7) {
+      box(g, 3.1, .18, .75, shared.orange, x, .5, -8.5);
+      box(g, .15, .65, .7, shared.dark, x - 1.2, .25, -8.5);
+      box(g, .15, .65, .7, shared.dark, x + 1.2, .25, -8.5);
+    }
+  }
+
+  createEnvironment() {
+    // Buildable service yard boundary and simple airport perimeter details.
+    for (let x = -56; x <= 56; x += 14) {
+      box(this.scene, .16, .1, 17, material('#e8f1df'), x, .06, 38.3, false);
+    }
+    // Hangar silhouettes beyond the fence, plus a tree line kept outside construction areas.
+    for (let i = 0; i < 38; i++) {
+      const x = -86 + (i * 47 % 172);
+      const z = i % 2 ? 59 + (i % 4) * 2 : -57 - (i % 3) * 2;
+      this.addTree(x, z, .72 + (i % 3) * .15);
+    }
+    // Windsock, maintenance shed and airport fire vehicles as environmental props.
+    const wind = new THREE.Group(); wind.position.set(-42, 0, -6); this.scene.add(wind);
+    cylinder(wind, .09, .12, 3.4, shared.silver, 0, 1.7, 0, 10);
+    const sock = new THREE.Mesh(new THREE.ConeGeometry(.28, 2.1, 8), shared.orange);
+    sock.rotation.z = Math.PI / 2; sock.position.set(.92, 2.85, 0); wind.add(sock);
+    const shed = new THREE.Group(); shed.position.set(-38, 0, 34); this.scene.add(shed);
+    box(shed, 7, 3.2, 5, material('#edf1e9'), 0, 1.6, 0);
+    box(shed, 7.3, .45, 5.3, shared.red, 0, 3.25, 0);
+    box(shed, 3.2, 2.0, .16, shared.dark, 0, 1.05, -2.58);
+    const sign = makeTextLabel('MAINTENANCE', '#fff', [5.2, .8, 1]); sign.position.set(0, 2.6, -2.7); shed.add(sign);
+  }
+
+  addTree(x, z, scale = 1) {
+    const tree = new THREE.Group();
+    tree.position.set(x, 0, z);
+    tree.scale.setScalar(scale);
+    this.scene.add(tree);
+    cylinder(tree, .19, .26, 1.3, material('#906346'), 0, .65, 0, 7);
+    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 1), material('#388d48'));
+    crown.position.y = 1.65; crown.scale.set(1.05, 1.22, .95); crown.castShadow = true; tree.add(crown);
+    sphere(tree, .58, material('#58b75b'), -.48, 1.35, .05, [1.05, 1.1, 1]);
+    sphere(tree, .58, material('#4ba650'), .45, 1.5, -.12, [1.0, 1.15, 1]);
+  }
+
+  addStandMarking(x, z, number = '01') {
+    const g = new THREE.Group(); g.position.set(x, .245, z); this.scene.add(g);
+    const marking = material('#fff5c5');
+    box(g, .12, .025, 7.2, marking, -5.0, 0, 0, false);
+    box(g, .12, .025, 7.2, marking, 5.0, 0, 0, false);
+    box(g, 10.1, .025, .12, marking, 0, 0, -3.55, false);
+    box(g, 10.1, .025, .12, marking, 0, 0, 3.55, false);
+    const noseLine = box(g, .14, .027, 3.4, shared.yellow, 0, .008, -1.2, false);
+    noseLine.rotation.y = .0;
+    const label = makeTextLabel(number, '#fff5cb', [1.5, .5, 1]); label.position.set(0, .03, 4.1); g.add(label);
+  }
+
+  createBuilding(type, x, z, id, existing = false) {
+    const root = new THREE.Group();
+    root.position.set(x, 0, z);
+    root.userData = { id, type, collision: true };
+    this.scene.add(root);
+
+    if (type === 'gate') {
+      const gateNumber = 1 + [...this.buildings.values()].filter(entry => entry.userData?.type === 'gate').length;
+      this.addStandMarking(x, z, `G${String(gateNumber).padStart(2, '0')}`);
+      // Glass passenger bridge, telescopic section, support legs and docking head.
+      box(root, 2.1, 1.25, 5.2, shared.blue, 0, 2.0, 4.4);
+      box(root, 1.55, .95, 3.4, shared.glass, 0, 2.15, 4.25);
+      box(root, 2.0, .2, 5.5, shared.white, 0, 2.75, 4.35);
+      box(root, 2.5, 1.55, 1.7, shared.blueDark, 0, 2.0, 7.1);
+      for (const x0 of [-.68, .68]) cylinder(root, .1, .12, 1.55, shared.dark, x0, .78, 3.2, 8);
+      box(root, 2.8, .22, .24, shared.yellow, 0, 2.9, 7.0);
+      const sign = makeTextLabel(`GATE ${String(gateNumber).padStart(2, '0')}`, '#ffffff', [3.6, .75, 1]);
+      sign.position.set(0, 3.65, 5.0); root.add(sign);
+      // Ground power unit and baggage cart parked beside the stand.
+      box(root, 1.05, .65, 1.2, shared.orange, -6.0, .38, 1.2);
+      cylinder(root, .22, .22, .14, shared.rubber, -6.0, .18, .75, 12, [0, 0, Math.PI / 2]);
+      cylinder(root, .22, .22, .14, shared.rubber, -6.0, .18, 1.65, 12, [0, 0, Math.PI / 2]);
+    } else if (type === 'cafe' || type === 'shop') {
+      const base = type === 'cafe' ? material('#fff0d7') : material('#e7f4ff');
+      const accent = type === 'cafe' ? shared.orange : shared.blue;
+      box(root, 7.5, 3.6, 6.4, base, 0, 1.8, 0);
+      box(root, 7.9, .42, 6.8, accent, 0, 3.7, 0);
+      box(root, 5.0, 1.8, .14, shared.glass, 0, 2.0, -3.25, false);
+      box(root, 1.7, 1.7, .18, shared.dark, 0, .85, -3.34);
+      box(root, 2.5, .28, .24, shared.white, 0, 3.15, -3.48, false);
+      const label = makeTextLabel(type === 'cafe' ? 'CAFE & CO' : 'SKY SHOP', '#fff', [4.2, .8, 1]);
+      label.position.set(0, 3.12, -3.5); root.add(label);
+      for (const px of [-2.3, 2.3]) {
+        cylinder(root, .12, .12, 1.0, shared.dark, px, .5, 4.0, 8);
+        const umbrella = new THREE.Mesh(new THREE.ConeGeometry(.95, .34, 12), type === 'cafe' ? shared.orange : shared.blue);
+        umbrella.position.set(px, 1.08, 4.0); umbrella.rotation.x = Math.PI; umbrella.castShadow = true; root.add(umbrella);
+        cylinder(root, .42, .42, .12, shared.orange, px, .12, 4.0, 12);
+      }
+    } else if (type === 'parking') {
+      box(root, 13, .34, 9.5, material('#7f8b94'), 0, .16, 0);
+      box(root, 13.3, 1.55, .3, shared.blueDark, 0, .8, -4.8);
+      for (let i = 0; i < 7; i++) box(root, .11, .035, 3.8, shared.white, -5.2 + i * 1.72, .35, .2, false);
+      const carColors = [shared.red, shared.blue, shared.orange, shared.white];
+      for (let i = 0; i < 4; i++) {
+        const car = new THREE.Group(); car.position.set(-4.5 + i * 3, .26, 1.7); root.add(car);
+        box(car, 1.45, .62, 2.65, carColors[i], 0, .4, 0);
+        box(car, 1.1, .48, 1.25, shared.glass, 0, .88, -.18);
+        for (const wx of [-.65, .65]) for (const wz of [-.82, .82]) cylinder(car, .22, .22, .13, shared.rubber, wx, .22, wz, 10, [0, 0, Math.PI / 2]);
+      }
+      const sign = makeTextLabel('PARKING', '#fff', [4.2, .8, 1]); sign.position.set(0, 2.1, -5.0); root.add(sign);
+    } else if (type === 'tower') {
+      box(root, 2.8, 7.7, 2.8, material('#e9f0ec'), 0, 3.85, 0);
+      box(root, 4.7, 1.5, 4.7, shared.blueDark, 0, 8.3, 0);
+      box(root, 4.35, 1.0, 4.35, shared.glass, 0, 8.35, 0);
+      box(root, 5.1, .36, 5.1, shared.orange, 0, 9.12, 0);
+      box(root, 1.45, .7, 1.45, shared.dark, 0, 9.55, 0);
+      cylinder(root, .09, .09, 1.7, shared.silver, 0, 10.8, 0, 10);
+      sphere(root, .24, shared.red, 0, 11.75, 0);
+    } else if (type === 'fire') {
+      box(root, 11, 4.1, 8.2, material('#fff0e8'), 0, 2.05, 0);
+      box(root, 11.35, .48, 8.5, shared.red, 0, 4.23, 0);
+      for (const x0 of [-3.3, 0, 3.3]) {
+        box(root, 2.5, 2.4, .18, shared.dark, x0, 1.45, -4.18);
+        box(root, 2.0, 1.5, .13, shared.red, x0, 1.3, -4.32);
+      }
+      const label = makeTextLabel('FIRE & RESCUE', '#fff', [5.5, .8, 1]); label.position.set(0, 3.6, -4.4); root.add(label);
+      // Small fire engine parked by the garage.
+      const truck = new THREE.Group(); truck.position.set(3.2, .26, 3.0); root.add(truck);
+      box(truck, 2.0, .9, 3.4, shared.red, 0, .55, 0);
+      box(truck, 1.8, .9, 1.2, shared.glass, 0, 1.3, .9);
+      box(truck, 1.8, .18, .25, shared.white, 0, 1.85, -.2);
+      for (const wx of [-.9, .9]) for (const wz of [-1.05, 1.05]) cylinder(truck, .32, .32, .2, shared.rubber, wx, .32, wz, 12, [0, 0, Math.PI / 2]);
+    } else if (type === 'hangar') {
+      box(root, 14, 5.8, 11, material('#e2edf0'), 0, 2.9, 0);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(9, 2.6, 4), shared.blue);
+      roof.rotation.y = Math.PI / 4; roof.scale.set(1, .68, .88); roof.position.set(0, 6.1, 0); roof.castShadow = true; root.add(roof);
+      box(root, 8.4, 4.2, .18, shared.dark, 0, 2.1, -5.58);
+      box(root, 8.0, 3.8, .12, material('#a1bac8'), 0, 2.0, -5.7);
+      for (const x0 of [-4.2, 4.2]) box(root, .2, 4.5, .22, shared.orange, x0, 2.25, -5.75);
+    } else if (type === 'terminal') {
+      box(root, 16, 4.9, 9.5, material('#f0f5ef'), 0, 2.45, 0);
+      box(root, 16.3, .5, 9.8, shared.green, 0, 5.0, 0);
+      for (let x = -6; x <= 6; x += 3) box(root, 1.8, 2.9, .14, shared.glass, x, 2.3, -4.82, false);
+      box(root, 5.2, .3, 1.6, shared.orange, 0, 3.75, -5.1);
+    } else if (type === 'runway') {
+      // The 48 m segment overlaps the original runway shoulder slightly so
+      // the new concrete/asphalt joins visually without a gap. Its outer end
+      // receives the threshold bars; the inner end stays clear for continuity.
+      box(root, 48, .30, 14, shared.asphaltEdge, 0, -.015, 0, false);
+      box(root, 45, .28, 11, shared.asphalt, 0, .16, 0, false);
+      for (let x = -19; x <= 19; x += 5) box(root, 2.1, .035, .18, shared.white, x, .32, 0, false);
+      const outerEnd = x < 0 ? -22.6 : 22.6;
+      for (let z = -3.8; z <= 3.8; z += 1.9) {
+        box(root, .25, .035, 1.2, shared.white, outerEnd, .32, z, false);
+        sphere(root, .13, shared.white, outerEnd - Math.sign(x) * .8, .39, z, [.8, .65, .8]);
+      }
+    } else if (type === 'fuel') {
+      cylinder(root, 2.5, 2.5, 4.8, shared.white, 0, 2.4, 0, 24);
+      cylinder(root, 2.58, 2.58, .42, shared.blue, 0, 4.82, 0, 24);
+      cylinder(root, .3, .3, .6, shared.dark, 0, 5.25, 0, 12);
+      const label = makeTextLabel('JET A-1', '#fff', [3.6, .75, 1]); label.position.set(0, 2.55, -2.55); root.add(label);
+      box(root, 2.5, .35, 2.5, shared.orange, 0, .18, 3.5);
+    }
+
+    this.buildings.set(id, root);
+    return root;
+  }
+
+  addBuilding(building) {
+    return this.createBuilding(building.type, building.x, building.z, building.id);
+  }
+
+  addInitialGate() {
+    this.createBuilding('gate', 8, 8.5, 'initial-gate', true);
+  }
+
+  setPlacement(type, footprint = [8, 8]) {
+    this.clearPlacement();
+    this.previewType = type;
+    this.previewFootprint = footprint;
+    const ghost = new THREE.Group();
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(footprint[0], footprint[1]),
+      new THREE.MeshBasicMaterial({ color: '#57e69a', transparent: true, opacity: .32, depthWrite: false, side: THREE.DoubleSide })
+    );
+    plane.rotation.x = -Math.PI / 2; plane.position.y = .035; ghost.add(plane);
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(footprint[0], .08, footprint[1])),
+      new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: .95 })
+    );
+    outline.position.y = .1; ghost.add(outline);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(.18, .18, .35, 12), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+    post.position.y = .2; ghost.add(post);
+    this.scene.add(ghost); this.preview = ghost;
+    this.preview.userData.plane = plane;
+    this.preview.userData.outline = outline;
+  }
+  clearPlacement() {
+    if (this.preview) {
+      this.preview.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (Array.isArray(o.material)) o.material.forEach(m => m.dispose()); else o.material.dispose(); } });
+      this.scene.remove(this.preview);
+    }
+    this.preview = null; this.previewType = null;
+  }
+  updatePreview(valid) {
+    if (!this.preview) return;
+    this.preview.userData.plane.material.color.set(valid ? '#58ee9e' : '#ff5e62');
+    this.preview.userData.outline.material.color.set(valid ? '#f7fff9' : '#ffdddd');
+  }
+
+  handlePointerMove(event) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hit = new THREE.Vector3();
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, hit)) {
+      const snappedX = Math.round(hit.x / 2) * 2;
+      const snappedZ = Math.round(hit.z / 2) * 2;
+      if (this.preview) this.preview.position.set(snappedX, 0, snappedZ);
+      this.onHover?.({ x: snappedX, z: snappedZ });
+    }
+  }
+  handlePointerUp(event) {
+    if (!this.preview || event.button !== 0) return;
+    const down = this.pointerDown; this.pointerDown = null;
+    if (down && (down.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 7)) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const p = new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(p, this.camera);
+    const hit = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(this.groundPlane, hit)) return;
+    this.onWorldClick?.({ x: Math.round(hit.x / 2) * 2, z: Math.round(hit.z / 2) * 2, originalEvent: event });
+  }
+
+  syncFlight(flight) {
+    if (!flight) {
+      if (this.aircraftMesh) { this.scene.remove(this.aircraftMesh); this.aircraftMesh = null; }
+      return;
+    }
+    if (!this.aircraftMesh) this.aircraftMesh = makeAircraft();
+    const p = flight.position || { x: -58, y: 8, z: -16 };
+    this.aircraftMesh.position.set(p.x, p.y, p.z);
+    this.aircraftMesh.rotation.y = Number.isFinite(flight.yaw) ? flight.yaw : Math.PI / 2;
+    const airborne = ['approach', 'takeoff'].includes(flight.phase) && p.y > 2.2;
+    this.aircraftMesh.userData.wheels.forEach(w => { w.visible = !airborne; });
+    this.aircraftMesh.userData.gear.forEach(g => { g.visible = !airborne; });
+    this.aircraftMesh.userData.engineRunning = flight.phase !== 'parked';
+  }
+
+  setWeather(weather) {
+    const colors = { Sunny: '#9edcf5', Cloudy: '#aebfcb', Rain: '#8ea6ba', Fog: '#b8c7ca', Snow: '#dceaf1', Thunderstorm: '#758ba0' };
+    const color = colors[weather] || colors.Sunny;
+    this.scene.background = new THREE.Color(color);
+    this.scene.fog.color.set(color);
+    this.scene.fog.near = weather === 'Fog' ? 35 : 150;
+    this.scene.fog.far = weather === 'Fog' ? 130 : 330;
+  }
+
+  createPedestrians() {
+    this.pedestrianPath = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-5.4, 0, 13.3), new THREE.Vector3(-2.0, 0, 13.1),
+      new THREE.Vector3(1.0, 0, 12.1), new THREE.Vector3(4.8, 0, 10.8),
+      new THREE.Vector3(8.0, 0, 9.2), new THREE.Vector3(9.2, 0, 7.6),
+    ]);
+    const clothes = ['#e85d5d', '#3c86d4', '#f0a43b', '#7b68c9', '#37a984', '#e8edf2', '#dc78a8'];
+    for (let i = 0; i < 18; i++) {
+      const person = makePassenger(clothes[i % clothes.length], i);
+      person.userData.t = i / 18;
+      person.userData.speed = .012 + (i % 4) * .0018;
+      person.userData.phase = i * .9;
+      this.scene.add(person);
+      const start = this.pedestrianPath.getPointAt(person.userData.t);
+      person.position.set(start.x, 0, start.z);
+      this.passengers.push(person);
+    }
+  }
+
+  createServiceVehicles() {
+    const tug = new THREE.Group();
+    this.scene.add(tug);
+    box(tug, 1.35, .65, 1.7, shared.orange, 0, .78, 0);
+    box(tug, 1.15, .95, .85, shared.glass, 0, 1.45, .25);
+    box(tug, 1.4, .16, 1.9, shared.yellow, 0, 1.1, -.08);
+    for (const x of [-.65, .65]) for (const z of [-.55, .55]) cylinder(tug, .28, .28, .15, shared.rubber, x, .32, z, 12, [0, 0, Math.PI / 2]);
+    for (let i = 0; i < 2; i++) {
+      const cart = new THREE.Group(); cart.position.set(0, 0, -1.75 - i * 1.5); tug.add(cart);
+      box(cart, 1.45, .5, 1.15, material('#dce5e8'), 0, .55, 0);
+      for (const x of [-.58, .58]) for (const z of [-.4, .4]) cylinder(cart, .2, .2, .13, shared.rubber, x, .22, z, 10, [0, 0, Math.PI / 2]);
+    }
+    this.tug = tug;
+    this.tug.position.set(-23.5, 0, 11);
+  }
+
+  resize() {
+    const w = Math.max(1, this.container.clientWidth), h = Math.max(1, this.container.clientHeight);
+    const aspect = w / h;
+    const viewHeight = 90;
+    this.camera.left = -viewHeight * aspect / 2;
+    this.camera.right = viewHeight * aspect / 2;
+    this.camera.top = viewHeight / 2;
+    this.camera.bottom = -viewHeight / 2;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h);
+  }
+
+  update(delta = 0, simulationRunning = true) {
+    this.controls.update();
+    const dt = clamp(delta || 0, 0, .05);
+    if (simulationRunning && dt > 0) {
+      this.elapsed += dt;
+      for (const p of this.passengers) {
+        const u = (p.userData.t + p.userData.speed * dt) % 1;
+        p.userData.t = u;
+        const point = this.pedestrianPath.getPointAt(u);
+        const tangent = this.pedestrianPath.getTangentAt(u);
+        p.position.set(point.x + Math.sin(p.userData.phase) * .42, 0, point.z + Math.cos(p.userData.phase) * .34);
+        p.rotation.y = Math.atan2(tangent.x, tangent.z);
+        const swing = Math.sin(this.elapsed * 8 + p.userData.phase) * .36;
+        p.userData.leftLeg.rotation.x = swing;
+        p.userData.rightLeg.rotation.x = -swing;
+        p.userData.leftArm.rotation.x = -swing * .72;
+        p.userData.rightArm.rotation.x = swing * .72;
+      }
+      if (this.tug) {
+        const angle = this.elapsed * .09;
+        this.tug.position.set(-19 + Math.cos(angle) * 4.5, 0, 10.8 + Math.sin(angle) * 2.0);
+        this.tug.rotation.y = -angle;
+      }
+    }
+    if (this.aircraftMesh) {
+      if (this.aircraftMesh.userData.engineRunning && dt > 0) this.aircraftMesh.userData.propellers.forEach(p => { p.rotation.z += dt * 34; });
+      this.aircraftLightTime += dt;
+      const blink = Math.sin(this.aircraftLightTime * 8) > .15;
+      this.aircraftMesh.userData.beacon.visible = blink;
+      this.aircraftMesh.userData.navRed.visible = blink;
+      this.aircraftMesh.userData.navGreen.visible = blink;
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  focusAirport() {
+    this.controls.target.set(0, 0, 13);
+    this.camera.position.set(70, 83, 72);
+    this.camera.zoom = 1.06;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+  }
+
+  dispose() {
+    this.resizeObserver?.disconnect();
+    this.renderer.domElement.removeEventListener('pointerdown', this._onPointerDown);
+    this.renderer.domElement.removeEventListener('pointermove', this._onPointerMove);
+    this.renderer.domElement.removeEventListener('pointerup', this._onPointerUp);
+    this.renderer.domElement.removeEventListener('contextmenu', this._onContextMenu);
+    this.controls.dispose();
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
+  }
+}
+
+function makePassenger(shirtColor, index) {
+  const person = new THREE.Group();
+  const skin = material(index % 3 === 0 ? '#a96d4a' : index % 3 === 1 ? '#e0b18b' : '#c88e67');
+  const shirt = material(shirtColor);
+  const trousers = material(index % 2 ? '#34485e' : '#526276');
+  const head = sphere(person, .19, skin, 0, 1.28, 0, [.85, 1.05, .9]);
+  const hair = sphere(person, .17, material(index % 2 ? '#49382d' : '#7b5940'), 0, 1.4, -.015, [1, .6, 1]);
+  box(person, .42, .54, .24, shirt, 0, .82, 0);
+  const leftArm = new THREE.Group(); leftArm.position.set(-.29, 1.02, 0); person.add(leftArm);
+  const rightArm = new THREE.Group(); rightArm.position.set(.29, 1.02, 0); person.add(rightArm);
+  cylinder(leftArm, .075, .08, .48, skin, 0, -.22, 0, 7);
+  cylinder(rightArm, .075, .08, .48, skin, 0, -.22, 0, 7);
+  const leftLeg = new THREE.Group(); leftLeg.position.set(-.12, .57, 0); person.add(leftLeg);
+  const rightLeg = new THREE.Group(); rightLeg.position.set(.12, .57, 0); person.add(rightLeg);
+  cylinder(leftLeg, .09, .1, .55, trousers, 0, -.27, 0, 7);
+  cylinder(rightLeg, .09, .1, .55, trousers, 0, -.27, 0, 7);
+  box(leftLeg, .18, .12, .32, shared.dark, 0, -.55, .07);
+  box(rightLeg, .18, .12, .32, shared.dark, 0, -.55, .07);
+  // Small carry-on bag helps the crowd read as airport passengers.
+  if (index % 3 === 0) {
+    const bag = box(person, .27, .32, .18, material('#825e43'), .34, .55, -.05);
+    bag.rotation.z = -.12;
+  }
+  person.userData = { leftLeg, rightLeg, leftArm, rightArm };
+  person.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return person;
+}
+
+function makeAircraft() {
+  const g = new THREE.Group();
+  const fuselageMat = material('#f7fbfc', .34, .08);
+  const bellyMat = material('#cbd8e1', .5, .1);
+  const airlineBlue = material('#217bc0', .36, .06);
+  const stripe = material('#ffbd47', .42, .02);
+  const darkGlass = new THREE.MeshStandardMaterial({ color: '#24465d', roughness: .16, metalness: .28 });
+  const engineMat = material('#8998a4', .31, .35);
+
+  // Smooth tapered fuselage, with rounded nose and tail cone.
+  const profile = [
+    new THREE.Vector2(.03, -5.55), new THREE.Vector2(.22, -5.35), new THREE.Vector2(.37, -4.9),
+    new THREE.Vector2(.46, -4.2), new THREE.Vector2(.50, -3.0), new THREE.Vector2(.53, -1.2),
+    new THREE.Vector2(.53, 1.3), new THREE.Vector2(.51, 3.2), new THREE.Vector2(.43, 4.15),
+    new THREE.Vector2(.28, 4.8), new THREE.Vector2(.09, 5.25), new THREE.Vector2(.015, 5.42),
+  ];
+  const fuselage = new THREE.Mesh(new THREE.LatheGeometry(profile, 24), fuselageMat);
+  fuselage.rotation.x = Math.PI / 2;
+  fuselage.position.y = .02;
+  fuselage.castShadow = true; fuselage.receiveShadow = true; g.add(fuselage);
+  box(g, .58, .12, 6.2, bellyMat, 0, -.45, -.1, true, true);
+
+  // Cabin windows follow the fuselage curvature on both sides.
+  for (const side of [-1, 1]) {
+    for (let z = -3.6; z <= 3.1; z += .48) {
+      const radius = .52 * Math.sqrt(Math.max(.45, 1 - Math.pow(z / 6.0, 2)));
+      sphere(g, .105, darkGlass, side * (radius + .015), .27, z, [.22, .72, .72]);
+    }
+    // Passenger door outlines and cockpit side glazing.
+    box(g, .035, .8, .48, airlineBlue, side * .48, .12, 3.65);
+    const cockpit = box(g, .055, .27, .76, darkGlass, side * .34, .30, 4.65);
+    cockpit.rotation.x = -.08;
+  }
+  // Cockpit windscreen across the nose.
+  const windshield = new THREE.Mesh(new THREE.SphereGeometry(.4, 16, 10), darkGlass);
+  windshield.scale.set(1.0, .48, .18); windshield.position.set(0, .43, 4.58); g.add(windshield);
+
+  // Swept low wing and rear stabilisers.
+  makeWing(g, 15.2, 2.9, 1.15, -.5, fuselageMat);
+  makeWing(g, 4.7, 1.45, .7, -4.05, airlineBlue);
+  // Blue wing tips and flap lines.
+  for (const side of [-1, 1]) {
+    const tip = box(g, .34, .3, 1.15, airlineBlue, side * 7.4, .02, -.55);
+    tip.rotation.y = side * -.12;
+    box(g, 6.5, .035, .06, stripe, side * 3.6, -.07, -1.0, false);
+  }
+  // Vertical tail fin with a swept shape.
+  const finShape = new THREE.Shape();
+  finShape.moveTo(0, 0); finShape.lineTo(1.35, 0); finShape.lineTo(.6, 2.45); finShape.lineTo(.12, 2.55); finShape.closePath();
+  const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: .18, bevelEnabled: true, bevelSegments: 1, bevelSize: .05, bevelThickness: .04 });
+  finGeo.translate(-.68, 0, -.1);
+  const fin = new THREE.Mesh(finGeo, airlineBlue); fin.position.set(0, .42, -4.55); fin.castShadow = true; g.add(fin);
+  box(g, .34, .08, .95, stripe, 0, 1.55, -4.45);
+
+  // Under-wing turboprop nacelles with visible propeller spinners and blades.
+  const propellers = [];
+  for (const side of [-1, 1]) {
+    const engine = new THREE.Group(); engine.position.set(side * 3.1, -.52, -.35); g.add(engine);
+    const nacelle = new THREE.Mesh(new THREE.CylinderGeometry(.36, .43, 1.75, 16, 1), engineMat);
+    nacelle.rotation.x = Math.PI / 2; nacelle.position.z = -.05; nacelle.castShadow = true; engine.add(nacelle);
+    const intake = new THREE.Mesh(new THREE.CircleGeometry(.32, 18), material('#172c3c', .4, .2));
+    intake.position.z = .84; engine.add(intake);
+    const spinner = new THREE.Mesh(new THREE.ConeGeometry(.19, .45, 16), material('#dce6eb', .3, .18));
+    spinner.rotation.x = Math.PI / 2; spinner.position.z = 1.02; engine.add(spinner);
+    const prop = new THREE.Group(); prop.position.z = .88; engine.add(prop);
+    for (let i = 0; i < 4; i++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(.10, .65, .045), airlineBlue);
+      blade.position.y = .36; blade.rotation.z = i * Math.PI / 2 + .28; prop.add(blade);
+    }
+    propellers.push(prop);
+  }
+
+  // Detailed landing gear: tyres, struts, wheel hubs and doors.
+  const wheels = [], gear = [];
+  for (const side of [-1, 1]) {
+    const strut = cylinder(g, .055, .065, .68, shared.silver, side * 2.45, -.82, -1.45, 8);
+    gear.push(strut);
+    const wheel = cylinder(g, .22, .22, .18, shared.rubber, side * 2.45, -1.13, -1.45, 16, [0, 0, Math.PI / 2]);
+    const hub = cylinder(g, .105, .105, .195, shared.silver, side * 2.45, -1.13, -1.45, 12, [0, 0, Math.PI / 2]);
+    wheels.push(wheel, hub);
+  }
+  const noseStrut = cylinder(g, .045, .055, .58, shared.silver, 0, -.78, 3.65, 8);
+  const noseWheel = cylinder(g, .16, .16, .13, shared.rubber, 0, -1.08, 3.65, 14, [0, 0, Math.PI / 2]);
+  const noseHub = cylinder(g, .075, .075, .145, shared.silver, 0, -1.08, 3.65, 10, [0, 0, Math.PI / 2]);
+  wheels.push(noseWheel, noseHub); gear.push(noseStrut);
+  for (const side of [-1, 1]) {
+    const door = box(g, .42, .08, .7, bellyMat, side * 2.45, -.48, -1.45);
+    gear.push(door);
+  }
+
+  // Recognition details: antennae, doors, service panels and navigation lights.
+  cylinder(g, .045, .045, .42, shared.silver, 0, .57, -3.2, 8);
+  const beacon = sphere(g, .11, shared.red, 0, .63, -.65);
+  const navRed = sphere(g, .12, shared.red, -7.55, .08, -.6);
+  const navGreen = sphere(g, .12, shared.green, 7.55, .08, -.6);
+  box(g, 1.5, .05, .08, stripe, 0, -.18, 4.0, false);
+
+  g.userData.wheels = wheels;
+  g.userData.gear = gear;
+  g.userData.beacon = beacon;
+  g.userData.navRed = navRed;
+  g.userData.navGreen = navGreen;
+  g.userData.propellers = propellers;
+  g.scale.setScalar(.66);
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}

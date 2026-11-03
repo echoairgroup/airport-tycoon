@@ -1,0 +1,335 @@
+import { AirportWorld } from './world/World.js';
+import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS } from './data.js';
+import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
+import { hourlyExpenses, hourlyIncome, addMoney } from './engine/economy.js';
+import { tickGame, flightPhaseLabel, giveXP } from './engine/simulation.js';
+import { getPlacementStatus as validatePlacement } from './engine/placement.js';
+import './style.css';
+import './arcade-overrides.css';
+
+let state = INITIAL_STATE();
+let world;
+let currentTab = 'overview';
+let selectedBuild = null;
+let selectedCategory = 'All';
+let lastFrame = performance.now();
+let lastAutosave = 0;
+let lastSimulationNotification = 0;
+let panelOpen = true;
+let toastQueue = [];
+let tutorialVisible = false;
+let graphicsQuality = 'High';
+
+const $ = id => document.getElementById(id);
+const fmt = n => `€${Math.round(n).toLocaleString('en-GB')}`;
+const fmtSigned = n => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n))}`;
+const timeLabel = minutes => `${String(Math.floor(minutes / 60) % 24).padStart(2,'0')}:${String(Math.floor(minutes) % 60).padStart(2,'0')}`;
+const totalStaff = () => Object.values(state.staff).reduce((a,b)=>a+b,0);
+const extraGates = () => state.buildings.filter(b=>b.type==='gate').length;
+const allBuildings = () => state.buildings.length + 3;
+
+function bootWorld() {
+  world = new AirportWorld($('game-world'), onWorldClick, onWorldHover);
+  world.addInitialGate();
+  for (const building of state.buildings) world.addBuilding(building);
+  world.setWeather(state.weather);
+  world.syncFlight(state.activeFlight);
+}
+
+function beginGame(loaded = false) {
+  $('main-menu').classList.add('hidden');
+  for (const id of ['topbar','sidebar','bottom-controls']) $(id).classList.remove('hidden');
+  $('panel').classList.remove('hidden');
+  $('panel').classList.add('collapsed'); panelOpen = false; $('panel-toggle').textContent = '›';
+  if (loaded && state.offlineEarnings) {
+    notifyLocal('Welcome back!', `Your airport earned ${fmt(state.offlineEarnings)} while you were away.`, 'success');
+    delete state.offlineEarnings;
+  }
+  renderPanel(); refreshHUD();
+  if (!state.tutorialComplete && state.tutorialStep < 4) showTutorial();
+}
+
+function startNewGame() {
+  state = INITIAL_STATE();
+  world.dispose();
+  $('game-world').innerHTML = '';
+  bootWorld();
+  beginGame(false);
+  saveNow(false);
+  notifyLocal('Welcome, airport manager!', 'Your regional airport is ready. Your first flight is already scheduled.', 'success');
+}
+
+function loadSavedGame() {
+  const saved = loadGame();
+  if (!saved) { notifyLocal('No valid save found', 'Start a new airport to begin playing.', 'warning'); return; }
+  state = { ...INITIAL_STATE(), ...saved };
+  world.dispose(); $('game-world').innerHTML=''; bootWorld(); beginGame(true);
+  if (state.offlineEarnings) { const earned=state.offlineEarnings; notifyLocal('Offline earnings', `You earned ${fmt(earned)} while away.`, 'success'); delete state.offlineEarnings; }
+}
+
+function saveNow(showToast = true) {
+  try {
+    saveGame(state);
+    if (showToast) notifyLocal('Game saved', 'Your airport progress has been saved in this browser.', 'success');
+    updateMenuSaveLabel();
+  } catch (error) {
+    console.error(error); notifyLocal('Save failed', 'Browser storage may be full or unavailable.', 'warning');
+  }
+}
+
+function updateMenuSaveLabel() {
+  $('menu-save-label').textContent = hasSave() ? 'Saved airport detected · Continue your progress anytime.' : 'A new airport is waiting for you.';
+  $('load-button').classList.toggle('hidden', !hasSave());
+  $('play-button').innerHTML = hasSave() ? '▶ &nbsp; CONTINUE AIRPORT' : '▶ &nbsp; PLAY';
+}
+
+function notifyLocal(title, message, type = 'info') {
+  const item = { id: `${Date.now()}-${Math.random()}`, title, message, type };
+  toastQueue.unshift(item); toastQueue = toastQueue.slice(0,4); renderToasts();
+}
+function renderToasts() {
+  $('toast-stack').innerHTML = toastQueue.slice(0,4).map(t => `<div class="toast ${t.type}"><span class="toast-symbol">${t.type==='success'?'✓':t.type==='warning'?'!':t.type==='flight'?'✈':'•'}</span><div><b>${t.title}</b><p>${t.message}</p></div><button data-dismiss-toast="${t.id}" aria-label="Dismiss">×</button></div>`).join('');
+}
+function onWorldHover(pos) {
+  if (!selectedBuild) return;
+  const item = BUILDINGS.find(x => x.id === selectedBuild);
+  const result = getPlacementStatus(selectedBuild, pos.x, pos.z);
+  $('hint-text').textContent = result.valid
+    ? `${item?.name || 'Building'} · X ${pos.x}, Z ${pos.z} · Clear site`
+    : `${result.reason} · X ${pos.x}, Z ${pos.z}`;
+  $('world-coords').textContent = `X ${pos.x}  ·  Z ${pos.z}`;
+  world.updatePreview(result.valid);
+}
+
+function getPlacementStatus(type, x, z) {
+  return validatePlacement(type, x, z, state.buildings);
+}
+
+function onWorldClick(pos) {
+  if (!selectedBuild) return;
+  const item=BUILDINGS.find(b=>b.id===selectedBuild);
+  if(!item) return;
+  if(state.level<item.level){notifyLocal('Building locked',`Reach airport level ${item.level} to unlock ${item.name}.`,'warning');return;}
+  if(state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} more to build ${item.name}.`,'warning');return;}
+  const placement = getPlacementStatus(selectedBuild, pos.x, pos.z); if(!placement.valid){notifyLocal('Cannot build here', placement.reason + '. Move the preview to a clear plot.','warning');return;}
+  addMoney(state,-item.cost);
+  const building={id:`b-${Date.now()}-${Math.floor(Math.random()*1000)}`,type:item.id,x:pos.x,z:pos.z,upkeep:item.upkeep,name:item.name};
+  state.buildings.push(building); state.stats.constructions++; giveXP(state,item.xp);
+  world.addBuilding(building);
+  notifyLocal('Construction complete',`${item.name} is now operational. Maintenance: ${fmt(item.upkeep)} / hour.`,'success');
+  selectedBuild=null; world.clearPlacement(); $('world-hint').classList.add('hidden');
+  currentTab='build'; setActiveTab('build'); renderPanel(); refreshHUD();
+}
+
+function setActiveTab(tab) {
+  currentTab=tab;
+  document.querySelectorAll('.nav-button').forEach(btn=>btn.classList.toggle('active',btn.dataset.tab===tab));
+  $('panel').classList.remove('collapsed'); panelOpen=true; $('panel-toggle').textContent='‹';
+}
+function togglePanel() {
+  panelOpen = !panelOpen;
+  $('panel').classList.toggle('collapsed', !panelOpen);
+  $('panel-toggle').textContent = panelOpen ? '‹' : '›';
+}
+
+function openBuild(type) {
+  const item=BUILDINGS.find(b=>b.id===type); if(!item) return;
+  $('panel').classList.remove('collapsed'); panelOpen = true; $('panel-toggle').textContent = '‹';
+  if(state.level<item.level){notifyLocal('Locked',`${item.name} unlocks at level ${item.level}.`,'warning');return;}
+  if(state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} to build this.`,'warning');return;}
+  selectedBuild=type; world.setPlacement(type, item.footprint || [8,8]); $('world-hint').classList.remove('hidden'); $('hint-text').textContent=`${item.name} selected · Green preview = valid plot`; notifyLocal('Placement mode',`Click an open area to place ${item.name}. Press Esc to cancel.`,'info');
+}
+function cancelBuild() { selectedBuild=null; world?.clearPlacement(); $('world-hint').classList.add('hidden'); }
+
+function renderPanel() {
+  const content=$('panel-content');
+  if(!content) return;
+  const template={
+    overview:renderOverview, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    employees:renderEmployees, passengers:renderPassengers, finances:renderFinances,
+    research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings
+  }[currentTab] || renderOverview;
+  content.innerHTML=template();
+}
+function panelHeader(kicker,title,desc,action='') { return `<div class="panel-header"><div><div class="panel-kicker">${kicker}</div><h2>${title}</h2><p>${desc}</p></div>${action}</div>`; }
+function statCard(label,value,sub,icon,accent='blue') { return `<div class="stat-card ${accent}"><div class="stat-card-top"><span>${label}</span><b>${icon}</b></div><strong>${value}</strong><small>${sub}</small></div>`; }
+function renderOverview() {
+  const f=state.activeFlight;
+  const objective=state.missionsClaimed.length>=MISSION_DEFS.length?'All starter missions complete':MISSION_DEFS.find(m=>!state.missionsClaimed.includes(m.id))?.title||'Expand your airport';
+  return `${panelHeader('AIRPORT CONTROL','Airport overview','A live snapshot of your airport operations.',`<button class="small-action" data-action="focus">◎ Focus airport</button>`)}
+  <div class="stat-grid">${statCard('AIRPORT RATING',`${Math.round(state.reputation)}%`,'Public reputation','★','purple')}${statCard('PASSENGERS ON SITE',Math.floor(state.passengers).toLocaleString('en-GB'),'Currently in your airport','♙','teal')}${statCard('FLIGHTS COMPLETED',state.flightsCompleted,'Successful departures','✈','orange')}</div>
+  <div class="section-title"><h3>Live operations</h3><span class="live-label"><i></i> LIVE SIMULATION</span></div>
+  <div class="flight-live-card">${f?`<div class="flight-route-icon">✈</div><div class="flight-live-main"><div class="flight-label">${f.id} · ${f.airline}</div><strong>${f.model}</strong><p>${flightPhaseLabel(f.phase)} · ${f.passengers} passengers · Gate ${f.gateId==='initial-gate'?'01':String(state.buildings.findIndex(b=>b.id===f.gateId)+2).padStart(2,'0')}</p></div><div class="flight-live-status"><span class="status-pill active">${f.phase==='approach'?'ARRIVING':f.phase==='takeoff'?'DEPARTING':'IN PROGRESS'}</span><small>ETA · LIVE</small></div>`:`<div class="flight-route-icon muted">✈</div><div class="flight-live-main"><div class="flight-label">NO AIRCRAFT CURRENTLY MOVING</div><strong>Next arrival scheduled</strong><p>Expected in ${Math.max(0,Math.ceil(state.nextFlightAt-state.gameMinutes))} game minutes.</p></div><div class="flight-live-status"><span class="status-pill">STANDBY</span></div>`}</div>
+  <div class="two-col"><div class="content-card"><div class="card-heading"><h3>Airport development</h3><span class="tiny-tag">LEVEL ${state.level}</span></div><div class="objective-row"><span class="objective-icon">⚑</span><div><b>${objective}</b><small>Your next milestone</small></div><button class="text-action" data-tab="missions">VIEW →</button></div><div class="mini-progress"><div style="width:${Math.min(100,state.xp/(state.level*500)*100)}%"></div></div><div class="mini-progress-label"><span>${state.xp} XP</span><span>${state.level*500} XP</span></div></div>
+  <div class="content-card"><div class="card-heading"><h3>Airport facilities</h3><span class="tiny-tag">${allBuildings()} BUILT</span></div><div class="facility-row"><span>🛬 Runway</span><b class="good-text">Operational</b></div><div class="facility-row"><span>🏢 Terminal</span><b class="good-text">Operational</b></div><div class="facility-row"><span>🛫 Aircraft gates</span><b>${1+extraGates()} active</b></div><div class="facility-row"><span>♙ Airport employees</span><b>${totalStaff()} on duty</b></div></div></div>
+  <div class="section-title"><h3>Recent notifications</h3><span class="muted-label">LATEST EVENTS</span></div><div class="event-list">${state.notifications.slice(0,4).map(n=>`<div class="event-item"><span class="event-dot ${n.type}"></span><div><b>${n.title}</b><small>${n.message}</small></div><time>${timeLabel(n.time||state.gameMinutes)}</time></div>`).join('')||'<div class="empty-state">No new airport events. Everything is quiet.</div>'}</div>`;
+}
+function renderBuild() {
+  const cats=['All','Operations','Passenger','Transport','Safety','Infrastructure'];
+  const items=BUILDINGS.filter(b=>(selectedCategory==='All'||b.category===selectedCategory));
+  return `${panelHeader('AIRPORT DEVELOPMENT','Build & expand','Choose a plot in the marked service yard. Buildings have real footprints and cannot overlap infrastructure or other facilities.',`<button class="small-action" data-action="cancel-build">✕ Cancel placement</button>`)}
+  <div class="category-tabs">${cats.map(c=>`<button class="category-tab ${selectedCategory===c?'active':''}" data-category="${c}">${c}</button>`).join('')}</div>
+  <div class="build-list">${items.map(b=>{const locked=state.level<b.level;const active=selectedBuild===b.id;return `<div class="build-card ${locked?'locked':''} ${active?'selected':''}"><div class="build-icon">${b.icon}</div><div class="build-info"><div class="build-title-row"><b>${b.name}</b>${locked?`<span class="lock-label">LVL ${b.level}</span>`:`<span class="available-label">AVAILABLE</span>`}</div><p>${b.description}</p><div class="build-meta"><span>↗ ${fmt(b.cost)}</span><span>⌁ ${fmt(b.upkeep)}/hr</span><span>⌂ ${b.category}</span></div></div><button class="build-select ${active?'chosen':''}" data-build="${b.id}" ${locked?'disabled':''}>${locked?'LOCKED':active?'SELECTED':'PLACE'}</button></div>`;}).join('')}</div>
+  <div class="info-note"><b>Construction tip</b><span>Buildings need clear land. Runways, taxiways and the terminal access area are reserved. New gates must be placed on the apron.</span></div>`;
+}
+function renderFlights() {
+  const f=state.activeFlight;
+  return `${panelHeader('FLIGHT OPERATIONS','Flight board','Monitor arrivals, departures and aircraft turnaround.')}
+  ${f?`<div class="content-card active-flight-detail"><div class="card-heading"><h3>Current flight</h3><span class="status-pill active">${f.phase==='approach'?'ARRIVING':f.phase==='takeoff'?'DEPARTING':'ACTIVE'}</span></div><div class="large-flight-number">${f.id}</div><div class="flight-detail-grid"><div><small>AIRLINE</small><b>${f.airline}</b></div><div><small>AIRCRAFT</small><b>${f.model}</b></div><div><small>PASSENGERS</small><b>${f.passengers}</b></div><div><small>OPERATION</small><b>${flightPhaseLabel(f.phase)}</b></div></div></div>`:`<div class="empty-state">No flight is currently active. The next arrival is scheduled in ${Math.max(0,Math.ceil(state.nextFlightAt-state.gameMinutes))} game minutes.</div>`}
+  <div class="section-title"><h3>Recent flight activity</h3><span class="muted-label">LAST 20 FLIGHTS</span></div>
+  <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRLINE</th><th>AIRCRAFT</th><th>PAX</th><th>NET RESULT</th><th>STATUS</th></tr></thead><tbody>${state.flightHistory.map(f=>`<tr><td><b>${f.id}</b></td><td>${f.airline}</td><td>${f.model}</td><td>${f.passengers}</td><td class="${f.net>=0?'good-text':'bad-text'}">${fmtSigned(f.net)}</td><td><span class="status-pill">${f.status}</span></td></tr>`).join('')||'<tr><td colspan="6" class="table-empty">Your first flight is on its way.</td></tr>'}</tbody></table></div>
+  <div class="info-note"><b>Flight operations</b><span>Aircraft land on the runway, taxi to the gate, unload and board passengers, then taxi out and take off. Each completed flight affects airport finances and reputation.</span></div>`;
+}
+function renderAircraft() {
+  const f=state.activeFlight;
+  return `${panelHeader('FLEET MANAGEMENT','Aircraft','Track the aircraft currently operating at your airport.')}
+  <div class="fleet-summary"><div><span>ACTIVE AIRCRAFT</span><b>${f?1:0}</b></div><div><span>FLIGHTS COMPLETED</span><b>${state.flightsCompleted}</b></div><div><span>AVAILABLE GATES</span><b>${1+extraGates()}</b></div></div>
+  ${f?`<div class="aircraft-card"><div class="aircraft-illustration">✈</div><div class="aircraft-details"><div class="flight-label">${f.airline} · ${f.id}</div><h3>${f.model}</h3><p>Regional passenger aircraft · ${f.passengers} seats booked</p><div class="aircraft-tags"><span>${flightPhaseLabel(f.phase)}</span><span>Gate ${f.gateId==='initial-gate'?'01':'02+'}</span></div></div></div>`:'<div class="empty-state">No aircraft on the apron right now. Your next scheduled arrival will appear here.</div>'}
+  <div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">STARTER FLEET</span></div><div class="catalogue-row"><div class="catalogue-icon">🛩️</div><div><b>AT-72 Regional</b><small>70 seats · Short-haul · Basic runway</small></div><span class="status-pill active">UNLOCKED</span></div><div class="catalogue-row"><div class="catalogue-icon">✈️</div><div><b>AJ-100 Regional Jet</b><small>100 seats · Medium runway required</small></div><span class="lock-label">LEVEL 5</span></div><div class="catalogue-row"><div class="catalogue-icon">🛫</div><div><b>AJ-220 Narrow-body</b><small>180 seats · Extended gate required</small></div><span class="lock-label">LEVEL 10</span></div>`;
+}
+function renderEmployees() {
+  const roles=[['security','Security','🛂','Passenger screening and terminal safety'],['handling','Ground handling','🦺','Aircraft turnaround and baggage services'],['cleaning','Cleaning staff','🧹','Terminal cleanliness and comfort'],['maintenance','Maintenance','🔧','Runway and facility reliability']];
+  return `${panelHeader('HUMAN RESOURCES','Employees','Hire and manage the team that keeps your airport running.')}
+  <div class="employee-summary"><div><small>TOTAL STAFF</small><b>${totalStaff()}</b></div><div><small>WAGE COST / HR</small><b>${fmt(totalStaff()*55)}</b></div><div><small>STAFF EFFICIENCY</small><b>${Math.min(100,Math.round(55+totalStaff()*3))}%</b></div></div>
+  <div class="employee-list">${roles.map(([id,name,icon,desc])=>`<div class="employee-card"><div class="employee-icon">${icon}</div><div class="employee-info"><b>${name}</b><small>${desc}</small><span>${fmt(state.staff[id]*55)} / hour · 55 € per employee</span></div><div class="employee-count"><button data-staff="${id}" data-delta="-1" ${state.staff[id]<=0?'disabled':''}>−</button><b>${state.staff[id]}</b><button data-staff="${id}" data-delta="1">＋</button></div></div>`).join('')}</div>
+  <div class="info-note"><b>Staffing matters</b><span>More employees improve passenger satisfaction and operational efficiency, but each employee adds €55 per game hour to your expenses. Keep an eye on your balance.</span></div>`;
+}
+function renderPassengers() {
+  const capacity=120+state.buildings.filter(b=>b.type==='terminal').length*100;
+  return `${panelHeader('PASSENGER EXPERIENCE','Passengers','Passenger satisfaction is shaped by staffing, services and airport conditions.')}
+  <div class="satisfaction-card"><div class="satisfaction-score"><strong>${Math.round(state.satisfaction)}%</strong><span>PASSENGER SATISFACTION</span></div><div class="satisfaction-copy"><b>${state.satisfaction>=85?'Excellent experience':state.satisfaction>=70?'Good passenger experience':'Needs attention'}</b><p>${state.satisfaction>=85?'Passengers are enjoying their visit. Keep your facilities staffed.':'Improve staffing and add passenger facilities to lift satisfaction.'}</p><div class="satisfaction-bar"><i style="width:${state.satisfaction}%"></i></div></div></div>
+  <div class="stat-grid">${statCard('CURRENT PASSENGERS',Math.floor(state.passengers),'At the airport','♙','teal')}${statCard('TOTAL PROCESSED',state.totalPassengers.toLocaleString('en-GB'),'Lifetime passenger count','⇄','blue')}${statCard('PEAK PASSENGERS',state.stats.peakPassengers,'On-site record','⌃','purple')}</div>
+  <div class="section-title"><h3>Passenger facilities</h3><span class="muted-label">OPERATIONAL EFFECT</span></div><div class="facility-row"><span>🏢 Terminal processing</span><b class="good-text">${capacity} passenger capacity</b></div><div class="facility-row"><span>☕ Food & beverage</span><b>${state.buildings.filter(b=>b.type==='cafe').length} cafés</b></div><div class="facility-row"><span>🛍️ Shopping</span><b>${state.buildings.filter(b=>b.type==='shop').length} shops</b></div><div class="facility-row"><span>🧹 Cleaning coverage</span><b>${state.staff.cleaning} employees</b></div>`;
+}
+function renderFinances() {
+  const income=hourlyIncome(state), expenses=hourlyExpenses(state), net=income-expenses;
+  const history=state.financialHistory.slice(-10); const max=Math.max(1,...history.map(x=>Math.max(x.income,x.expenses)));
+  return `${panelHeader('AIRPORT ECONOMY','Finances','Track revenue, operating costs and your airport’s financial health.')}
+  <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} estimated net per game hour</span></div><div class="balance-icon">€</div></div>
+  <div class="stat-grid">${statCard('EST. HOURLY INCOME',fmt(income),'Flights and airport services','↗','teal')}${statCard('HOURLY EXPENSES',fmt(expenses),'Staff and maintenance','↘','orange')}${statCard('LIFETIME REVENUE',fmt(state.lifetimeRevenue),'Total earned','€','purple')}</div>
+  <div class="content-card chart-card"><div class="card-heading"><h3>Recent flight performance</h3><span class="muted-label">PER COMPLETED FLIGHT</span></div><div class="chart-legend"><span><i class="legend-income"></i> Revenue</span><span><i class="legend-expense"></i> Expenses</span></div><div class="bar-chart">${history.map(h=>`<div class="bar-group"><div class="bar-pair"><i class="bar-income" style="height:${Math.max(2,h.income/max*100)}%" title="Revenue ${fmt(h.income)}"></i><i class="bar-expense" style="height:${Math.max(2,h.expenses/max*100)}%" title="Expenses ${fmt(h.expenses)}"></i></div><small>${h.label}</small></div>`).join('')||'<div class="empty-state">Complete a flight to start building your financial history.</div>'}</div></div>
+  <div class="section-title"><h3>Financial breakdown</h3></div><div class="facility-row"><span>Employee wages</span><b>${fmt(totalStaff()*55)} / hr</b></div><div class="facility-row"><span>Base airport operations</span><b>€280 / hr</b></div><div class="facility-row"><span>Building maintenance</span><b>${fmt(state.buildings.reduce((a,b)=>a+b.upkeep,0))} / hr</b></div><div class="facility-row"><span>Parking & retail income</span><b class="good-text">${fmt(state.buildings.filter(b=>b.type==='parking').length*390+state.buildings.filter(b=>['cafe','shop'].includes(b.type)).length*260)} / hr</b></div>`;
+}
+function renderResearch() {
+  return `${panelHeader('AIRPORT INNOVATION','Research & technology','Invest in improvements that have a measurable effect on airport operations.')}
+  ${state.researchInProgress?`<div class="research-progress"><div class="research-progress-icon">⌘</div><div><small>RESEARCH IN PROGRESS</small><b>${RESEARCH.find(r=>r.id===state.researchInProgress.id)?.name}</b><div class="mini-progress"><div style="width:${Math.max(0,100-state.researchInProgress.remaining/RESEARCH.find(r=>r.id===state.researchInProgress.id).duration*100)}%"></div></div><small>${Math.ceil(state.researchInProgress.remaining)} game minutes remaining</small></div></div>`:''}
+  <div class="research-list">${RESEARCH.map(r=>{const researched=state.research.includes(r.id), active=state.researchInProgress?.id===r.id, locked=state.level<r.level;return `<div class="research-card ${researched?'researched':''} ${locked?'locked':''}"><div class="research-icon">${r.icon}</div><div class="research-info"><small>${r.category.toUpperCase()}</small><b>${r.name}</b><p>${r.description}</p><span>Cost ${fmt(r.cost)} · ${r.duration} game minutes · Level ${r.level}</span></div><button class="research-button" data-research="${r.id}" ${researched||active||locked||state.researchInProgress?'disabled':''}>${researched?'✓ COMPLETE':active?'IN PROGRESS':locked?`LEVEL ${r.level}`:'RESEARCH'}</button></div>`;}).join('')}</div>
+  <div class="info-note"><b>Research benefits</b><span>Research advances in game time. Only one project can run at a time. Completed technologies remain active for the rest of your save.</span></div>`;
+}
+function missionProgress(m) {
+  if(m.metric==='extraGates') return extraGates();
+  return state[m.metric] ?? 0;
+}
+function renderMissions() {
+  return `${panelHeader('GOALS & REWARDS','Missions','Complete airport milestones to earn cash and experience points.')}
+  <div class="mission-list">${MISSION_DEFS.map(m=>{const progress=missionProgress(m);const complete=progress>=m.goal;const claimed=state.missionsClaimed.includes(m.id);return `<div class="mission-card ${claimed?'claimed':''}"><div class="mission-icon">${m.icon}</div><div class="mission-info"><div class="mission-title-row"><b>${m.title}</b>${claimed?'<span class="status-pill">CLAIMED</span>':complete?'<span class="available-label">COMPLETED</span>':''}</div><p>${m.description}</p><div class="mini-progress"><div style="width:${Math.min(100,progress/m.goal*100)}%"></div></div><small>${Math.min(progress,m.goal).toLocaleString('en-GB')} / ${m.goal.toLocaleString('en-GB')}</small></div><div class="mission-reward"><b>${fmt(m.reward)}</b><small>+${m.xp} XP</small><button data-claim="${m.id}" ${!complete||claimed?'disabled':''}>${claimed?'CLAIMED':complete?'CLAIM':'IN PROGRESS'}</button></div></div>`;}).join('')}</div>`;
+}
+function renderStatistics() {
+  return `${panelHeader('AIRPORT ANALYTICS','Statistics','Long-term performance indicators for your growing airport.')}
+  <div class="stat-grid">${statCard('FLIGHTS COMPLETED',state.flightsCompleted,'Successful departures','✈','blue')}${statCard('PASSENGERS SERVED',state.totalPassengers.toLocaleString('en-GB'),'Lifetime total','♙','teal')}${statCard('CONSTRUCTIONS',state.stats.constructions,'Facilities placed','＋','purple')}</div>
+  <div class="two-col"><div class="content-card"><div class="card-heading"><h3>Airport profile</h3></div><div class="facility-row"><span>Airport level</span><b>${state.level}</b></div><div class="facility-row"><span>Reputation</span><b>${Math.round(state.reputation)}%</b></div><div class="facility-row"><span>Passenger satisfaction</span><b>${Math.round(state.satisfaction)}%</b></div><div class="facility-row"><span>Research completed</span><b>${state.research.length}</b></div></div><div class="content-card"><div class="card-heading"><h3>Financial profile</h3></div><div class="facility-row"><span>Lifetime revenue</span><b>${fmt(state.lifetimeRevenue)}</b></div><div class="facility-row"><span>Lifetime expenses</span><b>${fmt(state.lifetimeExpenses)}</b></div><div class="facility-row"><span>Net lifetime result</span><b class="${state.lifetimeRevenue>=state.lifetimeExpenses?'good-text':'bad-text'}">${fmt(state.lifetimeRevenue-state.lifetimeExpenses)}</b></div><div class="facility-row"><span>Retail income</span><b>${fmt(state.retailIncome+state.parkingIncome)}</b></div></div></div>`;
+}
+function renderSettings() {
+  return `${panelHeader('GAME OPTIONS','Settings','Manage your save, simulation preferences and visual quality.')}
+  <div class="settings-group"><h3>Graphics</h3><div class="setting-row"><div><b>Rendering quality</b><small>Lower quality can improve performance on older computers.</small></div><select id="quality-select"><option ${graphicsQuality==='High'?'selected':''}>High</option><option ${graphicsQuality==='Medium'?'selected':''}>Medium</option><option ${graphicsQuality==='Low'?'selected':''}>Low</option></select></div></div>
+  <div class="settings-group"><h3>Audio</h3><div class="setting-row"><div><b>Music and sound effects</b><small>The audio engine is scheduled for a later development phase.</small></div><span class="status-pill">NOT IN PHASE 1</span></div></div>
+  <div class="settings-group"><h3>Simulation</h3><div class="setting-row"><div><b>Automatic saving</b><small>Your airport is saved automatically every 10 seconds.</small></div><span class="status-pill active">ENABLED</span></div><div class="setting-row"><div><b>Game speed</b><small>Choose the speed from the controls at the bottom of the screen.</small></div><b>${state.speed===0?'Paused':`${state.speed}×`}</b></div></div>
+  <div class="settings-group"><h3>Save management</h3><div class="setting-actions"><button class="primary-small" data-action="save">▣ Save now</button><button class="secondary-small" data-action="load">↶ Load saved game</button><button class="danger-small" data-action="new-game">＋ New airport</button></div><small class="save-detail">Save data is stored locally in this browser. Clearing browser storage can remove the save.</small></div>`;
+}
+
+function refreshHUD() {
+  $('cash-value').textContent=fmt(state.money);
+  const net=hourlyIncome(state)-hourlyExpenses(state); $('net-hour').textContent=fmtSigned(net); $('net-hour').className=net>=0?'good-text':'bad-text';
+  $('level-value').textContent=state.level; $('rep-value').textContent=`${Math.round(state.reputation)}%`;
+  $('pax-value').textContent=Math.floor(state.passengers).toLocaleString('en-GB');
+  $('clock-value').textContent=timeLabel(state.gameMinutes);
+  const w={Sunny:'☀',Cloudy:'☁',Rain:'🌧',Fog:'🌫',Snow:'❄',Thunderstorm:'⛈'};
+  $('weather-icon').textContent=w[state.weather]||'☀'; $('weather-name').textContent=state.weather;
+  $('xp-label').textContent=`LEVEL ${state.level} · ${Math.floor(state.xp)} / ${state.level*500} XP`;
+  $('xp-next').textContent=`NEXT: LEVEL ${state.level+1}`;
+  $('xp-fill').style.width=`${Math.min(100,state.xp/(state.level*500)*100)}%`;
+  document.querySelectorAll('.speed-button').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===state.speed));
+  world.syncFlight(state.activeFlight); world.setWeather(state.weather);
+}
+
+function showTutorial() {
+  const steps=[
+    ['Welcome to your airport','This is your regional airport. Your first aircraft is scheduled to arrive shortly. Let’s get your airport ready.','NEXT'],
+    ['Explore the 3D airport','Left-drag to rotate, scroll to zoom, and right-drag to pan.','NEXT'],
+    ['Build your airport','Open Build, select a facility and place it on a green construction plot. Red previews are blocked.','NEXT'],
+    ['Manage your operations','Watch the flight board, keep your employees staffed and monitor your finances. Your airport earns money when flights complete.','FINISH']
+  ];
+  const [title,desc,button]=steps[Math.min(state.tutorialStep,3)];
+  $('tutorial-card').innerHTML=`<div class="tutorial-step">WELCOME · ${state.tutorialStep+1} / 4</div><b>${title}</b><p>${desc}</p><div class="tutorial-actions"><button class="text-action" data-tutorial="skip">SKIP TUTORIAL</button><button class="primary-small" data-tutorial="next">${button} →</button></div>`;
+  $('tutorial-card').classList.remove('hidden'); tutorialVisible=true;
+}
+function advanceTutorial(skip=false) {
+  if(skip){state.tutorialComplete=true;state.tutorialStep=4;}else{state.tutorialStep++;if(state.tutorialStep>=4)state.tutorialComplete=true;}
+  if(state.tutorialComplete){$('tutorial-card').classList.add('hidden');tutorialVisible=false;saveNow(false);notifyLocal('Tutorial complete','You are ready to manage your airport.','success');}
+  else showTutorial();
+}
+
+function handlePanelClick(e) {
+  const tab=e.target.closest('[data-tab]'); if(tab){setActiveTab(tab.dataset.tab);renderPanel();return;}
+  const build=e.target.closest('[data-build]'); if(build){openBuild(build.dataset.build);renderPanel();return;}
+  const cat=e.target.closest('[data-category]');if(cat){selectedCategory=cat.dataset.category;renderPanel();return;}
+  const staff=e.target.closest('[data-staff]');if(staff){const role=staff.dataset.staff,delta=Number(staff.dataset.delta);if(delta>0){const cost=1250;if(state.money<cost){notifyLocal('Not enough funds',`Hiring costs ${fmt(cost)}.`,'warning');return;}addMoney(state,-cost);state.staff[role]++;notifyLocal('Employee hired',`${role[0].toUpperCase()+role.slice(1)} staff increased to ${state.staff[role]}.`,'success');}else{if(state.staff[role]<=0)return;state.staff[role]--;notifyLocal('Employee released',`${role[0].toUpperCase()+role.slice(1)} staff reduced to ${state.staff[role]}.`,'info');}renderPanel();refreshHUD();return;}
+  const research=e.target.closest('[data-research]');if(research){const r=RESEARCH.find(x=>x.id===research.dataset.research);if(!r||state.research.includes(r.id)||state.researchInProgress)return;if(state.money<r.cost){notifyLocal('Not enough funds',`Research requires ${fmt(r.cost)}.`,'warning');return;}addMoney(state,-r.cost);state.researchInProgress={id:r.id,remaining:r.duration};notifyLocal('Research started',`${r.name} is now in development.`,'success');renderPanel();refreshHUD();return;}
+  const claim=e.target.closest('[data-claim]');if(claim){const m=MISSION_DEFS.find(x=>x.id===claim.dataset.claim);if(!m||state.missionsClaimed.includes(m.id)||missionProgress(m)<m.goal)return;state.missionsClaimed.push(m.id);addMoney(state,m.reward);giveXP(state,m.xp);notifyLocal('Mission completed',`${m.title}: ${fmt(m.reward)} and ${m.xp} XP earned.`,'success');renderPanel();refreshHUD();return;}
+  const tutorial=e.target.closest('[data-tutorial]');if(tutorial){advanceTutorial(tutorial.dataset.tutorial==='skip');return;}
+  const action=e.target.closest('[data-action]');if(action){const a=action.dataset.action;if(a==='save')saveNow();else if(a==='load'){const saved=loadGame();if(saved){state={...INITIAL_STATE(),...saved};world.dispose();$('game-world').innerHTML='';bootWorld();renderPanel();refreshHUD();notifyLocal('Save loaded','Your saved airport has been restored.','success');}else notifyLocal('No save found','There is no valid saved airport.','warning');}else if(a==='new-game')confirmModal('Start a new airport?','This will replace your current airport. Save first if you want to keep it.','Start new game',startNewGame);else if(a==='focus')world.focusAirport();else if(a==='cancel-build')cancelBuild();else if(a==='toggle-panel')togglePanel();renderPanel();return;}
+}
+
+function confirmModal(title,desc,confirmText,callback) {
+  $('modal-card').innerHTML=`<div class="modal-icon">✈</div><h3>${title}</h3><p>${desc}</p><div class="modal-actions"><button class="secondary-small" data-modal="cancel">CANCEL</button><button class="danger-small" data-modal="confirm">${confirmText}</button></div>`;
+  $('modal-backdrop').classList.remove('hidden');
+  const close=()=>{$('modal-backdrop').classList.add('hidden');$('modal-card').onclick=null;};
+  $('modal-card').onclick=e=>{const b=e.target.closest('[data-modal]');if(!b)return;if(b.dataset.modal==='confirm')callback();close();};
+}
+
+// Global event wiring.
+$('play-button').addEventListener('click',()=>{if(hasSave()){const saved=loadGame();if(saved){state={...INITIAL_STATE(),...saved};world.dispose();$('game-world').innerHTML='';bootWorld();beginGame(true);}else startNewGame();}else startNewGame();});
+$('load-button').addEventListener('click',loadSavedGame);
+$('save-button').addEventListener('click',()=>saveNow());
+$('main-nav').addEventListener('click',handlePanelClick);
+$('panel-content').addEventListener('click',handlePanelClick);
+$('tutorial-card').addEventListener('click',handlePanelClick);
+$('panel-content').addEventListener('change',e=>{if(e.target.id==='quality-select'){graphicsQuality=e.target.value;world.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,graphicsQuality==='High'?2:graphicsQuality==='Medium'?1.4:1));notifyLocal('Graphics updated',`Rendering quality set to ${graphicsQuality}.`,'info');} });
+$('bottom-controls').addEventListener('click',e=>{const b=e.target.closest('[data-speed]');if(!b)return;state.speed=Number(b.dataset.speed);refreshHUD();notifyLocal(state.speed===0?'Simulation paused':`Simulation speed ${state.speed}×`,state.speed===0?'Airport operations are paused.':`Game time is running at ${state.speed}× speed.`,'info');});
+$('cancel-build').addEventListener('click',cancelBuild);
+$('panel-toggle').addEventListener('click', togglePanel);
+$('toast-stack').addEventListener('click',e=>{const b=e.target.closest('[data-dismiss-toast]');if(!b)return;toastQueue=toastQueue.filter(t=>t.id!==b.dataset.dismissToast);renderToasts();});
+$('panel').addEventListener('dblclick',e=>{if(e.target.closest('.panel-header'))togglePanel();});
+$('modal-backdrop').addEventListener('click',e=>{if(e.target.id==='modal-backdrop')$('modal-backdrop').classList.add('hidden');});
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){if(selectedBuild)cancelBuild();else if(!$('modal-backdrop').classList.contains('hidden'))$('modal-backdrop').classList.add('hidden');else if(tutorialVisible)advanceTutorial(true);}
+  if(e.key.toLowerCase()==='b' && !$('main-menu').classList.contains('hidden')){setActiveTab('build');renderPanel();}
+  if(['1','2','4'].includes(e.key) && !$('main-menu').classList.contains('hidden')){state.speed=Number(e.key);refreshHUD();}
+  if(e.key===' ' && !$('main-menu').classList.contains('hidden')){e.preventDefault();state.speed=state.speed===0?1:0;refreshHUD();}
+});
+
+bootWorld();
+updateMenuSaveLabel();
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  const realDelta=Math.min((now-lastFrame)/1000,.1); lastFrame=now;
+  const inGame=$('main-menu').classList.contains('hidden');
+  if(inGame && state.speed!==0){
+    const oldWeather=state.weather;
+    const oldResearch=state.researchInProgress?.remaining;
+    tickGame(state,realDelta);
+    if(state.notifications.length && state.notifications[0].id !== lastSimulationNotification){lastSimulationNotification=state.notifications[0].id;const n=state.notifications[0];notifyLocal(n.title,n.message,n.type||'info');}
+    if(state.researchInProgress){
+      state.researchInProgress.remaining-=realDelta*state.speed;
+      if(state.researchInProgress.remaining<=0){const r=RESEARCH.find(x=>x.id===state.researchInProgress.id);state.research.push(r.id);state.researchInProgress=null;notifyLocal('Research completed',`${r.name}: ${r.description}`,'success');renderPanel();}
+    }
+    if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(currentTab==='missions'||currentTab==='overview'||currentTab==='flights')renderPanel();state._lastPanelTick=state.gameMinutes;}
+    if(oldWeather!==state.weather)world.setWeather(state.weather);
+    world.syncFlight(state.activeFlight);
+    if(now-lastAutosave>10000){saveNow(false);lastAutosave=now;}
+    if(now%400<18)refreshHUD();
+  }
+  world.update(realDelta, inGame && state.speed !== 0);
+}
+requestAnimationFrame(animate);

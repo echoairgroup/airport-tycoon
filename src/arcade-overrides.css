@@ -1,0 +1,143 @@
+/* Airport Tycoon arcade presentation pass: clearer hierarchy, more map visibility. */
+:root {
+  --arcade-blue: #53b9e9;
+  --arcade-lime: #a8e86a;
+  --arcade-orange: #ffad4e;
+}
+#game-world { background: #9edcf5; }
+.airport-canvas { display:block; outline:0; touch-action:none; }
+.topbar {
+  top: 12px; left: 50%; right: auto; transform: translateX(-50%);
+  width: min(860px, calc(100vw - 112px)); height: 64px;
+  padding: 0 18px; border-radius: 18px;
+  background: rgba(13, 35, 54, .86);
+  border: 1px solid rgba(233, 249, 255, .2);
+  box-shadow: 0 12px 34px rgba(19, 52, 77, .18);
+}
+.brand { min-width: 150px; }
+.brand-icon { background: linear-gradient(145deg, #62c9ef, #3489d4); box-shadow: 0 5px 14px rgba(57, 170, 226, .25); }
+.top-metrics { gap: 18px; }
+.metric { min-width: 54px; }
+.metric strong { font-size: 14px; }
+.metric small { font-size: 7px; }
+.top-right { gap: 13px; }
+.weather-chip { padding: 7px 10px; border-radius: 9px; background: rgba(255,255,255,.08); }
+.clock { min-width: 56px; }
+.sidebar {
+  left: 14px; top: 94px; bottom: 16px; width: 58px;
+  padding: 10px 6px; border-radius: 18px;
+  background: rgba(14, 38, 58, .88);
+  border: 1px solid rgba(231, 248, 255, .16);
+  box-shadow: 0 12px 28px rgba(16, 46, 68, .15);
+  backdrop-filter: blur(16px);
+}
+.sidebar-label, .sidebar-bottom { display: none; }
+#main-nav { gap: 5px; }
+.nav-button {
+  width: 44px; height: 42px; padding: 0; justify-content: center;
+  border-radius: 12px; font-size: 0; position: relative;
+}
+.nav-button > span { font-size: 18px; }
+.nav-button kbd { display:none; }
+.nav-button:hover::after {
+  content: attr(data-tab); position:absolute; left:51px; top:50%; transform:translateY(-50%);
+  z-index:10; padding:7px 10px; border-radius:8px; background:#183c58; color:#fff;
+  font:700 10px Outfit, sans-serif; text-transform:capitalize; white-space:nowrap;
+  box-shadow:0 5px 18px rgba(0,0,0,.2); pointer-events:none;
+}
+.nav-button.active { background: linear-gradient(140deg, #5dc9ec, #3996db); color:#07273c; box-shadow:0 5px 14px rgba(64,177,226,.25); }
+.panel {
+  top: 92px; bottom: 86px; left: 84px; width: 340px; max-width: calc(100vw - 108px);
+  border-radius: 18px; background: rgba(12, 33, 51, .9);
+  border: 1px solid rgba(228, 246, 255, .17);
+  box-shadow: 0 14px 40px rgba(10, 36, 57, .2);
+  backdrop-filter: blur(20px);
+}
+.panel.collapsed { width: 0; border: 0; background: transparent; box-shadow:none; overflow:visible; }
+.panel.collapsed #panel-content { display:none; }
+.panel-toggle {
+  position:absolute; z-index:8; top:12px; right:-1px; width:29px; height:38px;
+  border:1px solid rgba(231,248,255,.22); border-right:0; border-radius:12px 0 0 12px;
+  background:#1b4e70; color:#fff; font-size:21px; font-weight:700;
+  box-shadow:0 5px 16px rgba(0,0,0,.18); cursor:pointer;
+}
+.panel.collapsed .panel-toggle {
+  right:auto; left:0; width:42px; height:48px; border:1px solid rgba(231,248,255,.2);
+  border-radius:0 14px 14px 0; background:linear-gradient(145deg,#4fbbe8,#358ad4);
+}
+#panel-content { padding: 20px 17px 24px; }
+.panel-header { padding-right: 0; margin-bottom: 16px; }
+.panel-header h2 { font-size:23px; }
+.panel-header p { max-width: 245px; font-size:9px; }
+.panel-kicker { color:#8ddc72; }
+.stat-grid { gap:6px; margin-bottom:14px; }
+.stat-card { padding:9px 8px; border-radius:12px; background:rgba(255,255,255,.055); }
+.stat-card > strong { font-size:17px; }
+.stat-card-top { font-size:6.5px; }
+.flight-live-card { border-radius:14px; background:linear-gradient(130deg,rgba(60,164,210,.2),rgba(113,178,118,.1)); }
+.content-card,.build-card,.employee-card,.mission-card,.research-card,.settings-group { border-radius:13px; }
+.build-card { padding:10px; background:rgba(255,255,255,.055); }
+.build-icon { border-radius:12px; background:rgba(95,185,226,.14); }
+.build-select,.primary-small { border-radius:9px; }
+.world-hint {
+  bottom:77px; left:50%; max-width:min(680px,calc(100vw - 110px));
+  padding:10px 14px; border-radius:13px; background:rgba(15,43,62,.92);
+  border-color:rgba(183,239,166,.38); font-size:10px;
+}
+.world-hint .hint-dot { background:var(--arcade-lime); box-shadow:0 0 9px var(--arcade-lime); }
+.bottom-controls {
+  left:84px; right:14px; bottom:13px; height:57px; padding:0 14px;
+  border-radius:16px; background:rgba(13,35,54,.88);
+  border:1px solid rgba(232,248,255,.17); box-shadow:0 11px 28px rgba(11,35,56,.16);
+}
+.speed-button { border-radius:9px; height:30px; min-width:34px; }
+.speed-button.active { background:var(--arcade-lime); border-color:var(--arcade-lime); color:#1e3b26; }
+.progress-track i { background:linear-gradient(90deg,#7edb78,#55c7ed); }
+.toast-stack { top:88px; right:15px; width:265px; }
+.toast { border-radius:12px; background:rgba(15,40,60,.94); border:1px solid rgba(230,247,255,.14); }
+.tutorial-card { background:rgba(13,37,56,.94); border-radius:16px; border:1px solid rgba(230,247,255,.16); }
+.menu-overlay { background:linear-gradient(120deg,rgba(10,38,59,.88),rgba(16,65,92,.58)); }
+.menu-content h1 { text-shadow:0 8px 28px rgba(0,0,0,.22); }
+.primary-button { background:linear-gradient(135deg,#9be764,#65cf80); color:#183d2d; box-shadow:0 8px 20px rgba(111,210,129,.22); }
+.ghost-button { border-radius:11px; }
+.menu-version { color:#d4edf3; }
+@media(max-width:1100px) {
+  .topbar { width:calc(100vw - 102px); }
+  .panel { width:315px; }
+}
+@media(max-width:800px) {
+  .topbar { left:8px; right:8px; transform:none; width:auto; top:8px; height:58px; }
+  .sidebar { left:8px; top:74px; bottom:8px; width:52px; }
+  .nav-button { width:40px; height:38px; }
+  .panel { left:68px; top:75px; bottom:75px; width:min(330px,calc(100vw - 78px)); }
+  .panel.collapsed { width:0; }
+  .panel-toggle { top:8px; }
+  .bottom-controls { left:68px; right:8px; bottom:8px; height:57px; }
+  .world-hint { bottom:72px; left:auto; right:8px; transform:none; max-width:calc(100vw - 85px); }
+  .toast-stack { right:8px; top:73px; width:min(250px,calc(100vw - 90px)); }
+}
+@media(max-width:480px) {
+  .topbar { padding:0 9px; }
+  .brand { min-width:0; }
+  .top-metrics { gap:7px; }
+  .top-right { gap:6px; }
+  .panel { width:calc(100vw - 78px); }
+  .bottom-controls { gap:7px; }
+}
+/* Slightly larger in-panel type keeps the compact layout readable. */
+.panel-header p { font-size: 10px; line-height: 1.6; }
+.section-title h3, .card-heading h3 { font-size: 13px; }
+.stat-card-top { font-size: 7px; }
+.stat-card > small { font-size: 8.5px; }
+.flight-live-main p { font-size: 9px; }
+.build-title-row b { font-size: 10px; }
+.build-info p { font-size: 8.5px; line-height: 1.5; }
+.build-meta { font-size: 8px; }
+.category-tab { font-size: 8.5px; }
+.employee-info b, .research-info > b, .mission-info b { font-size: 10px; }
+.employee-info small, .research-info p, .mission-info p { font-size: 8.5px; }
+.facility-row { font-size: 9.5px; }
+.event-item b { font-size: 9.5px; }
+.event-item small { font-size: 8.5px; }
+.progress-label { font-size: 8px; }
+.toast { font-size: 10px; }
