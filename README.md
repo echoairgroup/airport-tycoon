@@ -1,42 +1,48 @@
-# Airport Tycoon — Phase 1 playable foundation
+# Airport Tycoon — Arcade Build 0.2
 
 A browser-based, single-player airport tycoon game built with Vite and Three.js.
+This update is a visual and gameplay pass over the first playable foundation.
 
 ## Run locally
 
 1. Install Node.js 20.19+ (or 22.12+).
-2. Extract the ZIP file.
-3. Double-click `Start-Airport-Tycoon.bat` on Windows, or open a terminal in this folder.
-4. In a terminal, run `npm install` and then `npm run dev`.
+2. Open this project folder in a terminal.
+3. Run `npm install`.
+4. Run `npm run dev`.
 5. Open the local URL printed by Vite (normally http://localhost:5173).
 
-For a production bundle run `npm run build`; the deployable files are written to `dist/`.
+Run `npm test` to execute the 11 placement/collision checks, including runway-end placement rules.
+
+On Windows, `Start-Airport-Tycoon.bat` performs the install (when needed) and starts the game. `Build-Airport-Tycoon.bat` creates the production build in `dist/`.
 
 ## Controls
 
-- Left mouse drag: rotate the camera.
+- Left mouse drag: rotate the isometric camera.
 - Mouse wheel: zoom.
-- Middle mouse drag: pan.
+- Right mouse drag: pan.
+- Click the management icons on the left to open a management panel.
 - `B`: open Build.
 - `Esc`: cancel building placement / close a modal.
 - `1`, `2`, `4`: set simulation speed.
 - `Space`: pause / resume.
+- Use the arrow button on a management panel to collapse or reopen it.
 
-## Implemented in this build
+## Updated in Arcade Build 0.2
 
-- Procedural 3D airport scene with runway, taxiway, terminal, aircraft stand, control tower details, trees and apron markings.
-- Orbit camera with pan, rotate and zoom.
-- A scheduled aircraft that approaches, lands, taxis to its gate, turns around, taxis out and takes off along world-space paths.
-- Construction catalogue with costs, unlock levels, placement previews, location validation, maintenance and XP.
-- Working game clock, pause and 1× / 2× / 4× speeds.
-- Flight revenue, wages, building maintenance, passive shop / parking income and financial history.
-- Staff hiring and release, passenger satisfaction, missions and claimable rewards, research projects and level progression.
-- Weather state changes and visual atmosphere adjustments.
-- Automatic and manual local saves, load support and capped offline earnings.
-- Management panels for Overview, Build, Flights, Aircraft, Employees, Passengers, Finances, Research, Missions, Statistics and Settings.
+- Rebuilt the airport scene with a brighter, more colourful arcade tycoon art direction.
+- Switched to an isometric orthographic camera with smoother pan, zoom and rotation.
+- Rebuilt the terminal, apron, taxiways and runway markings with clearer scale and ground alignment.
+- Replaced the simple tube aircraft with a detailed procedural regional turboprop: tapered fuselage, cockpit glazing, cabin windows, swept wings, tail, nacelles, spinning propellers, landing gear and navigation lights.
+- Added an actual flight route: approach, descent, touchdown, landing roll, taxi to gate, turnaround, taxi out and take-off.
+- Added visible walking passengers with animated limbs and a moving baggage tug with carts.
+- Added a marked service yard for non-airside buildings, plus correctly positioned runway extensions that can only connect to either runway end.
+- Added building footprints and rectangular collision checks. The preview turns green for valid plots and red for blocked/overlapping plots.
+- Reserved the runway, taxiways, terminal, road and apron so facilities cannot be placed on top of essential airport infrastructure. Gate stands are restricted to the apron; runway extensions are restricted to the two runway ends.
+- Reduced interface clutter: compact icon navigation, smaller HUD and a collapsible management panel.
+- Updated the local save schema to version 2, with a basic migration path for version 1 saves.
 
-## Current scope
+## Still planned for later phases
 
-This is the first playable foundation, not the complete long-term feature set from the master prompt. The first flight and core economy are playable. Full multi-aircraft pathfinding, airline contract negotiations, individual passenger crowds, demolition/refunds, detailed emergency response, audio, cloud saves and later progression content remain planned expansions.
+This is not yet the complete game described in the master prompt. It currently supports one active aircraft at a time, a small visible pedestrian crowd, a looping baggage tug, and footprint-based construction collision checks. The next major additions are multi-aircraft traffic and pathfinding, more advanced passenger routing and terminal interiors, vehicle/aircraft collision avoidance, airline contracts, demolition and refunds, deeper emergency simulation, audio, and expanded progression.
 
-Save data is stored in browser `localStorage` for this first version. Do not clear browser site data if you want to keep the airport.
+Saves are stored locally in the browser. Clearing browser site data can remove the save.
