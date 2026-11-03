@@ -54,3 +54,65 @@
 .tutorial-actions{gap:7px;flex-wrap:wrap}
 .tutorial-actions button{font-size:7px}
 @media(max-width:800px){.season-chip{display:none}.maintenance-card{align-items:flex-start;flex-direction:column}.maintenance-card .primary-small{align-self:flex-start}.guide-row{grid-template-columns:78px 1fr}}
+
+
+/* Airport Tycoon 1.0 — operations, contracts and ownership UI */
+.release-feature-strip{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0 7px}
+.release-feature-strip span{padding:6px 8px;border:1px solid rgba(200,230,241,.18);border-radius:7px;background:rgba(255,255,255,.055);font-size:7px;font-weight:900;letter-spacing:1px;color:#c5e4ed}
+.incident-clear-card,.incident-card{border:1px solid rgba(124,205,165,.2);border-radius:12px;padding:12px;margin:9px 0 14px;background:linear-gradient(120deg,rgba(56,152,112,.12),rgba(255,255,255,.025))}
+.incident-clear-card{display:flex;align-items:center;gap:9px}
+.incident-clear-card>div{min-width:0;flex:1}
+.incident-clear-card b{display:block;font-size:9px}
+.incident-clear-card small{display:block;color:#8da8b2;font-size:7.5px;line-height:1.5;margin-top:3px}
+.incident-symbol{width:29px;height:29px;display:grid;place-items:center;flex-shrink:0;border-radius:9px;background:rgba(86,204,145,.13);color:#75e1ad;font-size:16px;font-weight:900}
+.incident-card{border-color:rgba(245,169,95,.32);background:linear-gradient(120deg,rgba(188,111,46,.17),rgba(255,255,255,.025))}
+.incident-card .incident-symbol{background:rgba(241,157,76,.16);color:#ffc17f}
+.incident-card-top{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+.incident-card-top small{margin-left:auto;color:#edb477;font-size:7px;font-weight:900;letter-spacing:.5px}
+.incident-card>b{font:700 13px Outfit}
+.incident-card>p{font-size:8px;line-height:1.6;color:#9db1bd;margin:5px 0 11px}
+.incident-response-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:9px;border-top:1px solid rgba(255,255,255,.07)}
+.incident-response-row span{font-size:7.5px;color:#b0c0c9}
+.status-pill.warning{background:rgba(242,166,88,.13);color:#ffc17d;border-color:rgba(242,166,88,.2)}
+.operations-hero{display:flex;align-items:center;justify-content:space-between;padding:15px;border-radius:13px;border:1px solid rgba(94,190,221,.22);background:linear-gradient(115deg,rgba(55,156,197,.19),rgba(92,177,132,.08));margin-bottom:12px}
+.operations-hero small,.operations-hero span{display:block;font-size:7px;letter-spacing:.8px;color:#91b8c5;font-weight:800}
+.operations-hero strong{display:block;font:800 17px Outfit;color:#dff5f6;margin:4px 0}
+.operations-live-dot{width:10px;height:10px;border-radius:50%;background:#6ee0a9;box-shadow:0 0 0 6px rgba(110,224,169,.1),0 0 14px rgba(110,224,169,.8)}
+.runway-condition-card{padding:13px;border:1px solid rgba(211,226,235,.12);background:rgba(255,255,255,.035);border-radius:11px}
+.runway-condition-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.runway-condition-heading b{font-size:9px}
+.runway-condition-heading strong{font:800 21px Outfit;color:#9ae4c2}
+.runway-condition-card>small{display:block;font-size:7.5px;line-height:1.6;color:#8fa7b6;margin:8px 0}
+.readiness-list{padding:5px 12px;border:1px solid rgba(190,220,235,.1);border-radius:10px;background:rgba(255,255,255,.025)}
+.readiness-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:8px}
+.readiness-row:last-child{border-bottom:0}
+.readiness-row b{font-size:7px;text-align:right}
+.contract-overview{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:12px 0 16px}
+.contract-overview>div{padding:11px 9px;border:1px solid rgba(106,190,219,.15);background:rgba(255,255,255,.035);border-radius:10px}
+.contract-overview small{display:block;color:#86a5b6;font-size:6.5px;font-weight:900;letter-spacing:.6px}
+.contract-overview strong{display:block;font:800 17px Outfit;color:#e6f5fa;margin-top:5px}
+.contract-list{display:flex;flex-direction:column;gap:9px}
+.contract-card{padding:12px;border:1px solid rgba(190,220,235,.13);border-radius:12px;background:rgba(255,255,255,.035)}
+.contract-card.contract-active{border-color:rgba(98,198,162,.32);background:linear-gradient(120deg,rgba(57,160,120,.10),rgba(255,255,255,.025))}
+.contract-card.contract-complete{opacity:.72}
+.contract-card-top{display:flex;align-items:center;gap:7px}
+.contract-icon{width:31px;height:31px;display:grid;place-items:center;border-radius:9px;background:rgba(81,177,212,.14);font-size:16px}
+.contract-client{min-width:0;flex:1;font-size:7.5px;color:#a7c3d0;font-weight:800}
+.contract-state{font-size:6px;letter-spacing:.5px;color:#8ce0b5;font-weight:900}
+.contract-card h3{font:700 12px Outfit;margin:9px 0 4px}
+.contract-card p{font-size:8px;color:#91a8b8;line-height:1.55;margin:0 0 10px}
+.contract-progress>div{display:flex;justify-content:space-between;gap:7px;font-size:7px;color:#8fa8b6;margin-bottom:5px}
+.contract-progress>div b{color:#c9e5ec}
+.contract-progress>i{display:block;height:5px;border-radius:8px;background:rgba(255,255,255,.08);overflow:hidden}
+.contract-progress>i span{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,#61c7e8,#72dfa8)}
+.contract-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+.contract-footer>strong{font:800 11px Outfit;color:#8fe0b5}
+.contract-footer small{display:block;font:600 7px 'DM Sans',sans-serif;color:#91aab7;margin-top:2px}
+.owned-building-list{display:flex;flex-direction:column;gap:6px}
+.owned-building-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px;border:1px solid rgba(188,220,235,.11);border-radius:9px;background:rgba(255,255,255,.025)}
+.owned-building-row>div{min-width:0;flex:1}
+.owned-building-row b{display:block;font-size:8.5px}
+.owned-building-row small{display:block;font-size:7px;color:#819dae;margin-top:4px}
+.demolish-button{padding:7px 8px;border:1px solid rgba(238,145,111,.22);border-radius:7px;background:rgba(188,91,75,.1);color:#f0ad94;font-size:6.5px;font-weight:900;white-space:nowrap}
+.demolish-button:disabled{opacity:.4}
+@media(max-width:800px){.contract-overview{gap:5px}.contract-overview>div{padding:9px 6px}.contract-overview strong{font-size:14px}.contract-card{padding:10px}.contract-footer{align-items:flex-start}}
