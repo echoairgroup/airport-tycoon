@@ -9,8 +9,10 @@ export function hourlyIncome(state) {
   const demandBoost = state.research.includes('digital-slots') ? 1.15 : 1;
   const retail = state.buildings.filter(b => ['cafe', 'shop'].includes(b.type)).length * 260;
   const parking = state.buildings.filter(b => b.type === 'parking').length * 390;
+  const hotels = state.buildings.filter(b => b.type === 'hotel').length * 520;
+  const cargoOperations = state.buildings.some(b => b.type === 'cargo-terminal') ? 260 : 0;
   const operational = state.flightsCompleted > 0 ? (950 + gates * 100) : 620;
-  return Math.round((operational + retail + parking) * demandBoost);
+  return Math.round((operational + retail + parking + hotels + cargoOperations) * demandBoost);
 }
 export function addMoney(state, amount) {
   state.money = Math.round((state.money + amount) * 100) / 100;
@@ -24,10 +26,12 @@ export function settleFlight(state, passengers = 64, cargoTons = 0) {
   const fuel = state.buildings.some(b => b.type === 'fuel') ? 650 : 0;
   const towerBonus = state.buildings.some(b => b.type === 'tower') ? 180 : 0;
   const runwayMultiplier = state.buildings.some(b => b.type === 'runway') ? 1.1 : 1;
-  const freightRevenue = Math.max(0, cargoTons) * 620;
+  const cargoTerminal = state.buildings.some(b => b.type === 'cargo-terminal');
+  const freightRevenue = Math.max(0, cargoTons) * 620 * (cargoTerminal ? 1.25 : 1);
   const revenue = (landing + passengerFees + handling + retail + fuel + towerBonus + freightRevenue) * runwayMultiplier;
   const hangarMultiplier = state.buildings.some(b => b.type === 'hangar') ? 0.88 : 1;
-  const operatingCost = (1050 + passengers * 2.2) * hangarMultiplier;
+  const freightCost = Math.max(0, cargoTons) * (cargoTerminal ? 62 : 105);
+  const operatingCost = (1050 + passengers * 2.2 + freightCost) * hangarMultiplier;
   const net = revenue - operatingCost;
 
   // Record gross income and costs separately so the finance screen remains consistent.
