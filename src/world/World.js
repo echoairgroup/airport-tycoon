@@ -465,7 +465,7 @@ export class AirportWorld {
         cylinder(car, .11, .11, .15, shared.silver, wx, .28, wz, 10, [0, 0, Math.PI / 2]);
       }
       this.scene.add(car);
-      this.trafficCars.push({ mesh: car, progress: i / 10, speed: .0032 + (i % 3) * .00035 });
+      this.trafficCars.push({ mesh: car, progress: i / 10, speed: .014 + (i % 3) * .0012 });
     }
   }
 
@@ -504,7 +504,7 @@ export class AirportWorld {
     ];
     for (const item of parked) {
       const aircraft = makeAircraft(item.kind);
-      aircraft.position.set(item.x, .94, item.z);
+      aircraft.position.set(item.x, 1.28, item.z);
       aircraft.rotation.y = item.yaw;
       aircraft.userData.engineRunning = false;
       aircraft.userData.parkedLightOffset = this.parkedAircraft.length * 1.65;
