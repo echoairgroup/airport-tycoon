@@ -107,6 +107,7 @@ export function progressContracts(state, flight) {
     if (updated.progress >= updated.target) {
       completed.push(updated.id);
       addMoney(state, updated.reward);
+      state.contractIncome = (state.contractIncome || 0) + updated.reward;
       state.contractsCompleted = (state.contractsCompleted || 0) + 1;
       state.completedContracts = [...(state.completedContracts || []), updated.id];
       giveXP(state, updated.xp);
