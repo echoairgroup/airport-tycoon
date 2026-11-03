@@ -17,3 +17,40 @@
 @media(max-width:1100px){.top-metrics{gap:13px}.metric{min-width:auto}.metric-icon{display:none}.brand{min-width:160px}.panel{width:330px}.sidebar{width:190px}.bottom-controls{left:220px}}
 @media(max-width:800px){.topbar{left:8px;right:8px;top:8px;height:60px;padding:0 10px;gap:9px}.brand{min-width:0}.brand-icon{width:32px;height:32px}.brand b{font-size:9px}.brand small{font-size:6px}.top-metrics{gap:9px}.metric:nth-child(n+4){display:none}.metric strong{font-size:11px}.metric small{font-size:6px}.top-right{gap:8px}.weather-chip{display:none}.sidebar{left:8px;top:76px;bottom:8px;width:54px;padding:9px 5px}.sidebar-label,.nav-button:not(.active) kbd,.sidebar-bottom{display:none}.nav-button{justify-content:center;padding:0;font-size:0;height:39px}.nav-button>span{font-size:17px}.nav-button kbd{display:none}.panel{top:76px;left:70px;bottom:75px;width:min(350px,calc(100vw - 78px));max-width:none}.panel-header h2{font-size:21px}.panel-header p{font-size:9px}.bottom-controls{left:70px;right:8px;bottom:8px;height:57px;gap:10px;padding:0 9px}.sim-label{display:none}.world-hint{bottom:72px;left:auto;right:8px;transform:none;max-width:calc(100vw - 85px);white-space:normal}.tutorial-card{right:8px;bottom:75px}.toast-stack{right:8px;top:75px;width:min(260px,calc(100vw - 90px))}.progress-wrap{max-width:120px}.world-coords{display:none}.menu-overlay{padding:8vw}.menu-content h1{font-size:60px}}
 @media(max-width:480px){.topbar{gap:6px}.top-metrics{gap:7px}.metric:nth-child(3){display:none}.clock small{font-size:6px}.clock strong{font-size:12px}.icon-button{width:30px;height:30px}.stat-grid{gap:5px}.stat-card{padding:8px 7px}.stat-card>strong{font-size:15px}.stat-card-top{font-size:6px}.two-col{grid-template-columns:1fr}.panel{width:calc(100vw - 78px)}#panel-content{padding:15px 12px}.panel-header{margin-bottom:14px}.panel-header .small-action{font-size:7px;padding:6px}.build-meta{gap:5px}.build-select{padding:6px}.flight-live-status{display:none}.mission-card{gap:6px;padding:8px}.mission-reward>b{font-size:8px}.menu-copy{font-size:10px}.menu-content h1{font-size:53px}.bottom-controls{gap:7px}.speed-button{min-width:25px;height:25px}.progress-wrap{max-width:90px}}
+
+
+/* Arcade 0.3: tutorial, maintenance and seasonal HUD */
+.season-chip{display:flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid rgba(206,225,236,.14);background:rgba(255,255,255,.035);border-radius:8px;color:#b5cbd8;font-size:8px;font-weight:800;letter-spacing:.25px;white-space:nowrap}
+.season-chip span:first-child{font-size:12px}
+.maintenance-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;margin:13px 0;border:1px solid rgba(242,174,100,.2);border-radius:11px;background:linear-gradient(120deg,rgba(180,120,55,.13),rgba(255,255,255,.025))}
+.maintenance-card>div{min-width:0;flex:1}
+.maintenance-card small{display:block;color:#d4ad7b;font-size:7px;font-weight:900;letter-spacing:1px}
+.maintenance-card strong{display:block;font:800 24px Outfit;color:#f2c58d;margin:3px 0}
+.maintenance-card p{font-size:8px;line-height:1.5;color:#95a9b6;margin:0 0 8px}
+.maintenance-card .primary-small{white-space:nowrap}
+.maintenance-card button:disabled{opacity:.45;cursor:not-allowed}
+.guide-mode-grid{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:16px}
+.guide-mode-card{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid rgba(102,192,222,.19);border-radius:11px;background:rgba(77,163,198,.075)}
+.guide-icon{width:36px;height:36px;display:grid;place-items:center;flex-shrink:0;border-radius:10px;background:rgba(96,194,226,.12);font-size:18px}
+.guide-mode-card>div{min-width:0;flex:1}
+.guide-mode-card b{font-size:10px}
+.guide-mode-card p{font-size:8px;line-height:1.45;color:#8fa7b7;margin:4px 0 0}
+.guide-tag{font-size:7px;font-weight:900;letter-spacing:.7px;color:#82d6ae}
+.guide-section{padding:13px;margin:9px 0;border:1px solid rgba(191,218,231,.11);border-radius:10px;background:rgba(255,255,255,.025)}
+.guide-section h3{font:700 11px Outfit;margin:0 0 9px;color:#d9edf4}
+.guide-section p{font-size:8px;line-height:1.65;color:#91a8b8;margin:7px 0}
+.guide-row{display:grid;grid-template-columns:92px 1fr;gap:9px;padding:7px 0;border-top:1px solid rgba(255,255,255,.055)}
+.guide-row b{font-size:8px;color:#8ed7e9}
+.guide-row span{font-size:8px;line-height:1.55;color:#9bb0bd}
+.guide-row kbd,.guide-section kbd{display:inline-block;padding:2px 5px;border:1px solid rgba(195,221,235,.2);border-radius:4px;background:rgba(255,255,255,.06);color:#d9e7ec;font-size:7px}
+.guide-footnote{padding:10px 2px 4px;color:#7695a8;font-size:8px;line-height:1.5}
+.tutorial-card{width:min(345px,calc(100vw - 32px));padding:18px}
+.tutorial-card>b{display:block;font:700 16px Outfit;line-height:1.25}
+.tutorial-card p{font-size:10px;line-height:1.65;color:#a9bdca}
+.tutorial-step{font-size:8px}
+.tutorial-task{display:flex;flex-direction:column;gap:4px;padding:10px;margin:0 0 13px;border:1px solid rgba(99,191,220,.16);border-radius:8px;background:rgba(69,162,195,.09)}
+.tutorial-task strong{font-size:7px;letter-spacing:.9px;color:#79d0e5}
+.tutorial-task span{font-size:8px;line-height:1.5;color:#a5bac7}
+.tutorial-actions{gap:7px;flex-wrap:wrap}
+.tutorial-actions button{font-size:7px}
+@media(max-width:800px){.season-chip{display:none}.maintenance-card{align-items:flex-start;flex-direction:column}.maintenance-card .primary-small{align-self:flex-start}.guide-row{grid-template-columns:78px 1fr}}
