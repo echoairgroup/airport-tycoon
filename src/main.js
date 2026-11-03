@@ -399,6 +399,11 @@ function handlePanelClick(e) {
     const building=state.buildings.find(item=>item.id===demolish.dataset.demolish);
     if(!building)return;
     if(state.activeFlight?.gateId===building.id){notifyLocal('Gate in use','Wait until the aircraft has departed before removing this gate.','warning');return;}
+    const dependentContract=(state.activeContracts||[]).find(contract=>contract.requiredBuilding===building.type);
+    if(dependentContract){
+      notifyLocal('Facility required by contract',`Complete or cancel ${dependentContract.name} before selling this facility.`,'warning');
+      return;
+    }
     const definition=BUILDINGS.find(item=>item.id===building.type);
     const refund=Math.floor((definition?.cost||0)*.55);
     confirmModal('Demolish this facility?',`This will remove ${building.name||definition?.name||building.type} and refund ${fmt(refund)} (55% of its purchase price).`,'Demolish & refund',()=>{
