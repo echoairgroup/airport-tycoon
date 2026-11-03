@@ -550,8 +550,8 @@ export class AirportWorld {
     sphere(tree, .58, material('#4ba650'), .45, 1.5, -.12, [1.0, 1.15, 1]);
   }
 
-  addStandMarking(x, z, number = '01') {
-    const g = new THREE.Group(); g.position.set(x, .245, z); this.scene.add(g);
+  addStandMarking(x, z, number = '01', parent = null) {
+    const g = new THREE.Group(); g.position.set(x, .245, z); (parent || this.scene).add(g);
     const marking = material('#fff5c5');
     box(g, .12, .025, 7.2, marking, -5.0, 0, 0, false);
     box(g, .12, .025, 7.2, marking, 5.0, 0, 0, false);
@@ -570,7 +570,7 @@ export class AirportWorld {
 
     if (type === 'gate') {
       const gateNumber = 1 + [...this.buildings.values()].filter(entry => entry.userData?.type === 'gate').length;
-      this.addStandMarking(x, z, `G${String(gateNumber).padStart(2, '0')}`);
+      this.addStandMarking(x, z, `G${String(gateNumber).padStart(2, '0')}`, root);
       // Glass passenger bridge, telescopic section, support legs and docking head.
       box(root, 2.1, 1.25, 5.2, shared.blue, 0, 2.0, 4.4);
       box(root, 1.55, .95, 3.4, shared.glass, 0, 2.15, 4.25);
@@ -658,6 +658,45 @@ export class AirportWorld {
         box(root, .25, .035, 1.2, shared.white, outerEnd, .32, z, false);
         sphere(root, .13, shared.white, outerEnd - Math.sign(x) * .8, .39, z, [.8, .65, .8]);
       }
+    } else if (type === 'cargo-terminal') {
+      box(root, 16, 5.2, 10.5, material('#dce5e4'), 0, 2.6, 0);
+      box(root, 16.4, .52, 10.8, shared.orange, 0, 5.25, 0);
+      box(root, 8.8, 3.4, .18, shared.dark, 0, 1.85, -5.34);
+      box(root, 8.1, 2.8, .12, material('#93a9b3'), 0, 1.8, -5.46);
+      for (const x0 of [-5.2, 5.2]) {
+        box(root, 3.2, .7, 1.5, shared.yellow, x0, .36, 4.5);
+        box(root, 2.2, .55, 2.2, shared.orange, x0, .28, 2.5);
+      }
+      const cargoSign = makeTextLabel('CARGO & LOGISTICS', '#fff', [8.5, .9, 1]);
+      cargoSign.position.set(0, 4.25, -5.52); root.add(cargoSign);
+      for (let x0 = -5; x0 <= 5; x0 += 5) {
+        box(root, 1.45, .55, 1.25, shared.orange, x0, .32, 2.7);
+        box(root, 1.5, .08, 1.28, shared.yellow, x0, .64, 2.7);
+      }
+    } else if (type === 'hotel') {
+      box(root, 13, 7.3, 10.5, material('#e9eee9'), 0, 3.65, 0);
+      box(root, 13.4, .48, 10.8, shared.blueDark, 0, 7.45, 0);
+      for (let floor = 0; floor < 3; floor++) {
+        for (let x0 = -5; x0 <= 5; x0 += 2.5) {
+          box(root, 1.45, 1.35, .14, shared.glass, x0, 1.65 + floor * 2.1, -5.32, false);
+          box(root, 1.52, .09, .18, shared.white, x0, 1.65 + floor * 2.1, -5.43, false);
+        }
+      }
+      box(root, 4.3, 1.2, .2, shared.orange, 0, 6.1, -5.42, false);
+      const hotelSign = makeTextLabel('SKYPORT HOTEL', '#fff', [5.8, .85, 1]);
+      hotelSign.position.set(0, 6.2, -5.57); root.add(hotelSign);
+      box(root, 3.6, .2, 2.1, material('#aeb6a8'), 0, .11, 6.0, false);
+    } else if (type === 'maintenance') {
+      box(root, 13.2, 5.3, 10.5, material('#e1e9e8'), 0, 2.65, 0);
+      box(root, 13.5, .48, 10.8, shared.green, 0, 5.35, 0);
+      box(root, 8.8, 4.0, .18, shared.dark, 0, 2.05, -5.35);
+      box(root, 8.1, 3.5, .12, material('#9fb2bd'), 0, 1.95, -5.48);
+      for (const x0 of [-5.1, 5.1]) {
+        box(root, .22, 4.1, .28, shared.orange, x0, 2.05, -5.5);
+      }
+      const depotSign = makeTextLabel('ENGINEERING', '#fff', [5.4, .8, 1]);
+      depotSign.position.set(0, 4.0, -5.56); root.add(depotSign);
+      box(root, 2.4, .7, 2.0, shared.yellow, 0, .38, 3.2);
     } else if (type === 'fuel') {
       cylinder(root, 2.5, 2.5, 4.8, shared.white, 0, 2.4, 0, 24);
       cylinder(root, 2.58, 2.58, .42, shared.blue, 0, 4.82, 0, 24);
@@ -668,6 +707,17 @@ export class AirportWorld {
 
     this.buildings.set(id, root);
     return root;
+  }
+
+  removeBuilding(id) {
+    const root = this.buildings.get(id);
+    if (!root) return false;
+    this.scene.remove(root);
+    root.traverse(object => {
+      if (object.geometry) object.geometry.dispose();
+    });
+    this.buildings.delete(id);
+    return true;
   }
 
   addBuilding(building) {
