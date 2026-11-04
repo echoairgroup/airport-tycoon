@@ -275,7 +275,7 @@ test('cargo flights use loading and unloading stages rather than passenger board
   assert.deepEqual(getGroundServicePlan(flight).map(stage => stage.id), ['cargo-unload','refueling','cargo-loading','maintenance-check','pushback']);
 });
 
-import { takeLoan, repayLoan, setTaxRate, investInProject, hourlyExpenseBreakdown, hourlyIncomeBreakdown, applyHourlyCashFlow } from '../src/engine/economy.js';
+import { takeLoan, repayLoan, setTaxRate, investInProject, hourlyExpenseBreakdown, hourlyIncomeBreakdown } from '../src/engine/economy.js';
 
 test('loan proceeds and scheduled principal and interest are reflected in the bank ledger', () => {
   const state = INITIAL_STATE();
