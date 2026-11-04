@@ -238,6 +238,7 @@ test('ATC only clears a holding aircraft when the approach is free', () => {
 
 test('ATC runway closure holds arrivals and prevents unsafe clearances', () => {
   const state = INITIAL_STATE();
+  state.buildings.push({ id: 'gate-west', type: 'gate', x: -16, z: 8.5 });
   const arrival = scheduleArrival(state);
   assert.equal(setRunwayClosed(state, true).ok, true);
   assert.equal(state.runwayClosed, true);
