@@ -105,3 +105,7 @@ Airport management now supports repeatable land acquisitions to the west, east a
 ### Airside layout pieces
 
 The build catalogue now includes rotatable taxiway segments and aircraft apron pads. Use the R key while placing to rotate a piece by 90 degrees. New aircraft gates can be placed on the original apron or inside a purchased expansion parcel after an apron pad is built there. Both the placement preview and saved building restore retain the selected orientation. The taxiway and apron pieces are currently construction/visual infrastructure; the traffic engine still uses its shared runway and taxiway reservation model rather than a full node-by-node route planner, and the current runway extension remains tied to the two original runway ends.
+
+### Passenger movement and emergency response
+
+The visible pedestrian loop now passes through the terminal interior, connecting the check-in side, security area, departure lounge and baggage side. Active operational incidents also create a visible response scene with airport responders and an emergency/support vehicle. A new aircraft-fire warning incident requires a staffed fire facility for the lower-cost in-house response; unresolved incidents carry a larger financial and reputation penalty. Emergency-response animation is a game-world representation, not a real fire physics or rescue certification model.

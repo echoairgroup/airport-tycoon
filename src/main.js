@@ -42,7 +42,7 @@ function bootWorld() {
   for (const parcel of (state.landParcels || [])) world.addLandParcel(parcel);
   for (const building of state.buildings) world.addBuilding(building);
   world.setWeather(state.weather);
-  world.syncFlights(activeFlightList());
+  world.syncFlights(activeFlightList()); world.syncIncident(state.activeIncident,state.buildings);
 }
 
 function beginGame(loaded = false) {
@@ -470,7 +470,7 @@ function refreshHUD() {
   $('xp-next').textContent=`NEXT: LEVEL ${state.level+1}`;
   $('xp-fill').style.width=`${Math.min(100,state.xp/(state.level*500)*100)}%`;
   document.querySelectorAll('.speed-button').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===state.speed));
-  world.syncFlights(activeFlightList()); world.setTimeOfDay(state.gameMinutes);
+  world.syncFlights(activeFlightList()); world.syncIncident(state.activeIncident,state.buildings); world.setTimeOfDay(state.gameMinutes);
 }
 
 
@@ -744,7 +744,7 @@ function animate(now) {
     if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(['missions','overview','flights','operations','contracts','finances'].includes(currentTab))renderPanel();state._lastPanelTick=state.gameMinutes;}
     if(oldWeather!==state.weather)world.setWeather(state.weather);
     world.setTimeOfDay(state.gameMinutes);
-    world.syncFlights(activeFlightList());
+    world.syncFlights(activeFlightList()); world.syncIncident(state.activeIncident,state.buildings);
     if(now-lastAutosave>10000){saveNow(false);lastAutosave=now;}
     if(now%400<18)refreshHUD();
   }

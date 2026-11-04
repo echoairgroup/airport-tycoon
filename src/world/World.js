@@ -191,6 +191,7 @@ export class AirportWorld {
     this.aircraftLightTime = 0;
     this.aircraftMeshes = new Map();
     this.serviceCrews = new Map();
+    this.incidentResponse = null;
     this.landMeshes = new Map();
     this.terminalRoof = null;
     this.terminalInteriorMode = false;
@@ -1223,10 +1224,14 @@ export class AirportWorld {
 
   createPedestrians() {
     this.pedestrianPath = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-5.4, 0, 13.3), new THREE.Vector3(-2.0, 0, 13.1),
-      new THREE.Vector3(1.0, 0, 12.1), new THREE.Vector3(4.8, 0, 10.8),
-      new THREE.Vector3(8.0, 0, 9.2), new THREE.Vector3(9.2, 0, 7.6),
-    ]);
+      new THREE.Vector3(-12.0, 0, 26.0), new THREE.Vector3(-9.0, 0, 24.0),
+      new THREE.Vector3(-5.5, 0, 24.0), new THREE.Vector3(-1.5, 0, 23.8),
+      new THREE.Vector3(3.0, 0, 23.0), new THREE.Vector3(7.0, 0, 21.7),
+      new THREE.Vector3(8.5, 0, 19.3), new THREE.Vector3(6.0, 0, 17.5),
+      new THREE.Vector3(2.0, 0, 16.8), new THREE.Vector3(-3.0, 0, 17.3),
+      new THREE.Vector3(-8.0, 0, 18.2), new THREE.Vector3(-11.5, 0, 20.5),
+      new THREE.Vector3(-12.0, 0, 26.0),
+    ], true);
     const clothes = ['#e85d5d', '#3c86d4', '#f0a43b', '#7b68c9', '#37a984', '#e8edf2', '#dc78a8'];
     for (let i = 0; i < 18; i++) {
       const person = makePassenger(clothes[i % clothes.length], i);
@@ -1238,6 +1243,58 @@ export class AirportWorld {
       person.position.set(start.x, 0, start.z);
       this.passengers.push(person);
     }
+  }
+
+  syncIncident(incident, buildings = []) {
+    if (!incident) {
+      if (this.incidentResponse) {
+        for (const person of this.incidentResponse.people) this.scene.remove(person);
+        this.scene.remove(this.incidentResponse.vehicle);
+        this.incidentResponse = null;
+      }
+      return;
+    }
+    if (this.incidentResponse?.id === incident.id) return;
+    if (this.incidentResponse) {
+      for (const person of this.incidentResponse.people) this.scene.remove(person);
+      this.scene.remove(this.incidentResponse.vehicle);
+    }
+
+    let location = { x: 0, z: 21 };
+    if (incident.id === 'runway-debris') location = { x: 12, z: -16 };
+    else if (incident.id === 'baggage-backlog') location = { x: -8, z: 19 };
+    else if (incident.id === 'cargo-delay') {
+      const cargo = buildings.find(building => building.type === 'cargo-terminal');
+      location = cargo ? { x: cargo.x, z: cargo.z } : { x: 0, z: 78 };
+    } else {
+      const fire = buildings.find(building => building.type === 'fire');
+      location = fire ? { x: fire.x, z: fire.z } : { x: 0, z: 25 };
+    }
+
+    const colours = incident.id === 'medical-assistance' || incident.id === 'aircraft-fire'
+      ? ['#e54436', '#ef8e32', '#e54436'] : ['#e2a13c', '#3b85b5', '#e2a13c'];
+    const people = colours.map((colour, index) => {
+      const person = makePassenger(colour, index + 1);
+      person.userData.serviceWorker = true;
+      person.userData.servicePhase = index * 1.1;
+      this.scene.add(person);
+      return person;
+    });
+    people.forEach((person, index) => person.position.set(location.x - 2 + index * 2, 0, location.z + 3));
+
+    const vehicle = new THREE.Group();
+    const fireResponse = incident.id === 'medical-assistance' || incident.id === 'aircraft-fire';
+    const body = fireResponse ? material('#d93b32') : material('#e7a63a');
+    box(vehicle, 2.1, .95, 5.0, body, 0, .8, 0);
+    box(vehicle, 1.8, 1.0, 1.65, shared.glass, 0, 1.72, 1.15);
+    box(vehicle, 2.15, .16, 4.8, fireResponse ? shared.white : shared.dark, 0, 1.35, -.1);
+    for (const x of [-.9, .9]) for (const z of [-1.65, 1.65]) cylinder(vehicle, .36, .36, .18, shared.rubber, x, .34, z, 12, [0,0,Math.PI/2]);
+    const beacon = box(vehicle, .72, .18, .2, shared.blue, 0, 2.3, 1.25);
+    beacon.userData.emergencyBeacon = true;
+    this.scene.add(vehicle);
+    vehicle.position.set(location.x + 5.6, .04, location.z + 1.1);
+    vehicle.rotation.y = incident.id === 'runway-debris' ? Math.PI / 2 : 0;
+    this.incidentResponse = { id: incident.id, people, vehicle, beacon, time: 0 };
   }
 
   createServiceVehicles() {
@@ -1314,6 +1371,18 @@ export class AirportWorld {
           person.userData.rightArm.rotation.x = swing * .6;
         });
       }
+    }
+    if (simulationRunning && dt > 0 && this.incidentResponse) {
+      const response = this.incidentResponse;
+      response.time += dt;
+      response.people.forEach(person => {
+        const swing = Math.sin(response.time * 6.8 + person.userData.servicePhase) * .22;
+        person.userData.leftLeg.rotation.x = swing;
+        person.userData.rightLeg.rotation.x = -swing;
+        person.userData.leftArm.rotation.x = -swing * .7;
+        person.userData.rightArm.rotation.x = swing * .7;
+      });
+      response.beacon.visible = Math.sin(response.time * 10) > 0;
     }
     for (const entry of this.aircraftMeshes.values()) {
       const aircraft = entry.mesh;

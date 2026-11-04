@@ -398,3 +398,19 @@ test('quarter-turn rotation swaps the validated footprint dimensions', () => {
   assert.equal(getPlacementStatus('taxiway', 130, 69.75, [], [parcel], 90).valid, true);
   assert.equal(getPlacementStatus('taxiway', 130, 108, [], [parcel], 90).valid, false);
 });
+
+test('aircraft fire incident requires the airport fire and rescue facility', () => {
+  const state = INITIAL_STATE();
+  const result = resolveIncident(state, true);
+  assert.equal(result.reason, 'none');
+  state.activeIncident = {
+    id: 'aircraft-fire', title: 'Aircraft fire warning', staffedCost: 1200,
+    emergencyCost: 4200, penaltyCost: 8500, satisfactionPenalty: 12, reputationPenalty: 4.5
+  };
+  const money = state.money;
+  const resolved = resolveIncident(state, true);
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.cost, 1200);
+  assert.equal(state.money, money - 1200);
+  assert.equal(state.activeIncident, null);
+});
