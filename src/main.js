@@ -2,7 +2,7 @@ import { AirportWorld } from './world/World.js';
 import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from './data.js';
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney } from './engine/economy.js';
-import { tickGame, flightPhaseLabel, giveXP, resolveIncident } from './engine/simulation.js';
+import { tickGame, flightPhaseLabel, giveXP, resolveIncident, scheduleArrival, holdArrival, clearArrival, setRunwayClosed } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
 
 let state = INITIAL_STATE();
@@ -144,7 +144,7 @@ function renderPanel() {
   const content=$('panel-content');
   if(!content) return;
   const template={
-    overview:renderOverview, operations:renderOperations, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    overview:renderOverview, operations:renderOperations, atc:renderATC, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
     employees:renderEmployees, passengers:renderPassengers, finances:renderFinances, contracts:renderContracts,
     research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
@@ -212,6 +212,30 @@ function renderBuild() {
   <div class="owned-building-list">${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=activeFlightList().some(flight=>flight.gateId===building.id);return `<div class="owned-building-row"><div><b>${def?.icon||'🏗️'} ${building.name||def?.name||building.type}</b><small>${building.type==='gate'?'Aircraft stand':'Service facility'} · ${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="${building.id}" ${occupied?'disabled':''}>${occupied?'IN USE':`SELL · +${fmt(refund)}`}</button></div>`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
   <div class="info-note"><b>Construction tip</b><span>Gates belong on the apron. Other facilities belong in the marked service yard. Demolishing a building refunds 55% of its original purchase price. A gate cannot be removed while an aircraft is using it.</span></div>`;
 }
+function renderATC() {
+  const active = activeFlightList();
+  const runwayBusy = Boolean(state.runwayFlightId);
+  const taxiwayBusy = Boolean(state.taxiwayFlightId);
+  const holding = active.filter(f => f.phase === 'holding');
+  const runwayStatus = state.runwayClosed ? 'CLOSED' : runwayBusy ? 'OCCUPIED' : 'AVAILABLE';
+  const rows = active.map(f => {
+    const action = f.phase === 'approach'
+      ? '<button class="atc-command" data-atc-action="hold" data-flight-id="' + f.id + '">INSTRUCT HOLD</button>'
+      : f.phase === 'holding'
+        ? '<button class="atc-command" data-atc-action="clear" data-flight-id="' + f.id + '" ' + (state.runwayClosed || runwayBusy ? 'disabled' : '') + '>CLEAR APPROACH</button>'
+        : '<span class="atc-no-command">NO COMMAND</span>';
+    return '<div class="atc-traffic-row"><div><b>' + f.id + ' · ' + f.airline + '</b><small>' + f.model + ' · ' + (f.destination || '—') + '</small></div><span class="status-pill active">' + flightPhaseLabel(f.phase) + '</span>' + action + '</div>';
+  }).join('');
+  return panelHeader('AIR TRAFFIC CONTROL','ATC control centre','An arcade-accessible control desk for arrivals, holding instructions, runway status and controlled clearances.') +
+    '<div class="atc-runway-card"><div><small>RUNWAY 09 / 27</small><strong class="' + (state.runwayClosed ? 'bad-text' : 'good-text') + '">' + runwayStatus + '</strong><span>' + (runwayBusy ? 'Aircraft occupying runway' : 'No aircraft on runway') + '</span></div><button class="' + (state.runwayClosed ? 'primary-small' : 'danger-small') + '" data-atc-action="toggle-runway">' + (state.runwayClosed ? 'REOPEN RUNWAY' : 'CLOSE RUNWAY') + '</button></div>' +
+    '<div class="traffic-counts"><div><small>ACTIVE AIRCRAFT</small><b>' + active.length + '</b></div><div><small>HOLDING</small><b>' + holding.length + '</b></div><div><small>RUNWAY</small><b>' + (runwayBusy ? 'BUSY' : state.runwayClosed ? 'CLOSED' : 'FREE') + '</b></div><div><small>TAXIWAY</small><b>' + (taxiwayBusy ? 'BUSY' : 'FREE') + '</b></div></div>' +
+    '<div class="section-title"><h3>Traffic instructions</h3><span class="muted-label">LIVE CONTROL</span></div>' +
+    (rows || '<div class="empty-state">No aircraft under control. Use the flight board to schedule an arrival.</div>') +
+    '<div class="section-title"><h3>Arrival sequence</h3><span class="muted-label">' + holding.length + ' AIRCRAFT HOLDING</span></div>' +
+    (holding.length ? holding.map((flight,i)=>'<div class="facility-row"><span>' + (i+1) + '. ' + flight.id + ' · ' + flight.airline + '</span><b>' + flight.destination + '</b></div>').join('') : '<div class="empty-state">No aircraft are currently in the holding pattern.</div>') +
+    '<div class="info-note"><b>Control model</b><span>The runway and taxiway are protected by exclusive reservations. Closing a runway prevents new landings and take-offs; a runway cannot be closed while an aircraft is using it.</span></div>';
+}
+
 function renderFlights() {
   const active = activeFlightList();
   const count = phase => active.filter(f => f.phase === phase).length;
@@ -223,6 +247,13 @@ function renderFlights() {
   const next = Math.max(0, Math.ceil(state.nextFlightAt - state.gameMinutes));
   return panelHeader('FLIGHT OPERATIONS','Live flight board','Follow multiple arrivals, runway movements, gate turnarounds and departures as one coordinated airport operation.') +
     '<div class="traffic-counts"><div><small>ACTIVE</small><b>' + active.length + '</b></div><div><small>ARRIVALS</small><b>' + (count('approach') + count('holding') + count('landing-rollout') + count('runway-exit-wait')) + '</b></div><div><small>TAXIING</small><b>' + (count('taxi-in') + count('taxi-out')) + '</b></div><div><small>AT GATE</small><b>' + count('parked') + '</b></div></div>' +
+    '<div class="section-title"><h3>Plan an arrival</h3><span class="muted-label">MANUAL FLIGHT DISPATCH</span></div>' +
+    '<div class="schedule-grid">' +
+    '<button class="schedule-card" data-schedule-flight data-model="ATR 72-600" data-airline="Northstar Air" data-destination="Copenhagen"><b>ATR 72-600</b><small>Northstar Air · Copenhagen</small><span>REGIONAL · SCHEDULE</span></button>' +
+    '<button class="schedule-card" data-schedule-flight data-model="Airbus A320neo" data-airline="CloudJet" data-destination="London"><b>Airbus A320neo</b><small>CloudJet · London</small><span>JET · SCHEDULE</span></button>' +
+    '<button class="schedule-card" data-schedule-flight data-model="Boeing 737-800" data-airline="BluePeak" data-destination="Paris"><b>Boeing 737-800</b><small>BluePeak · Paris</small><span>JET · SCHEDULE</span></button>' +
+    '<button class="schedule-card" data-schedule-flight data-model="Boeing 737-800F" data-airline="CargoLink" data-destination="Frankfurt"><b>Boeing 737-800F</b><small>CargoLink · Frankfurt</small><span>CARGO · SCHEDULE</span></button>' +
+    '</div>' +
     '<div class="section-title"><h3>Aircraft in operation</h3><span class="muted-label">' + active.length + ' / ' + (1 + extraGates()) + ' GATES RESERVED</span></div>' +
     (rows || '<div class="empty-state">No aircraft are currently active. The next arrival is scheduled in ' + next + ' game minutes.</div>') +
     '<div class="section-title"><h3>Recent flight activity</h3><span class="muted-label">LAST 20 FLIGHTS</span></div>' +
@@ -413,6 +444,27 @@ function advanceTutorial(skip = false) {
 }
 
 function handlePanelClick(e) {
+  const schedule=e.target.closest('[data-schedule-flight]');
+  if(schedule){
+    const flight=scheduleArrival(state,{model:schedule.dataset.model,airline:schedule.dataset.airline,destination:schedule.dataset.destination});
+    if(!flight)notifyLocal('No free aircraft stand','Build another gate or wait for an aircraft to depart before scheduling another arrival.','warning');
+    else notifyLocal('Flight scheduled',flight.id+' · '+flight.airline+' to '+flight.destination+' has entered the arrival sequence.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+  const atc=e.target.closest('[data-atc-action]');
+  if(atc){
+    const action=atc.dataset.atcAction;
+    let result={ok:true};
+    if(action==='toggle-runway') result=setRunwayClosed(state,!state.runwayClosed);
+    else if(action==='hold') result=holdArrival(state,atc.dataset.flightId);
+    else if(action==='clear') result=clearArrival(state,atc.dataset.flightId);
+    if(!result.ok){
+      const messages={'runway-busy':'The runway cannot be closed while an aircraft is on it.','not-approaching':'This aircraft is not on final approach.','not-holding':'This aircraft is not waiting in the holding pattern.','runway-closed':'Reopen the runway before clearing an approach.','traffic-conflict':'Another aircraft has priority on the approach or runway.','missing':'This aircraft is no longer active.'};
+      notifyLocal('ATC instruction unavailable',messages[result.reason]||'The instruction could not be completed.','warning');
+    } else if(action==='hold') notifyLocal('Holding instruction issued',atc.dataset.flightId+' is entering the holding pattern.','success');
+    else if(action==='clear') notifyLocal('Approach clearance issued',atc.dataset.flightId+' is cleared for approach.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
   const tab=e.target.closest('[data-tab]'); if(tab){setActiveTab(tab.dataset.tab);renderPanel();return;}
   const build=e.target.closest('[data-build]'); if(build){openBuild(build.dataset.build);renderPanel();return;}
   const cat=e.target.closest('[data-category]');if(cat){selectedCategory=cat.dataset.category;renderPanel();return;}

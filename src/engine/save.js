@@ -91,7 +91,7 @@ function migrateV4(parsed) {
     return Math.max(highest, match ? Number(match[1]) : 0);
   }, 0);
   return {
-    ...parsed, version: 4, activeFlights, activeFlight: activeFlights[0] || null,
+    ...parsed, version: 4, activeFlights, activeFlight: activeFlights[0] || null, runwayClosed: Boolean(parsed.runwayClosed),
     flightSequence: Math.max(parsed.flightSequence || 0, parsed.flightsCompleted || 0, highestFlightNumber),
     runwayFlightId, taxiwayFlightId
   };

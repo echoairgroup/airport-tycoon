@@ -78,3 +78,7 @@ The HTML loads both stylesheets with relative paths and Vite generates the produ
 ### Traffic model boundaries
 
 This is the first operational traffic layer, not a certified air-traffic-control simulation. The airport currently models one shared taxiway reservation and one runway reservation at a time. Multiple arrivals can be visible and queued, and multiple aircraft can occupy separate gates, but parallel taxiway pathfinding, editable real airline timetables, ATC phraseology, live multiplayer, cloud saves and backend-hosted shared worlds are not included in this update. The next engineering stages are a node-based taxiway network, user-editable airline schedules, terminal passenger processes, detailed ground-service chains, then a backend for accounts, cloud saves and multiplayer synchronisation.
+
+### ATC controls and manual flight planning
+
+The 1.2 operations foundation also includes an accessible ATC control desk. Players can manually schedule selected aircraft/airline/destination combinations, issue holding and approach-clearance commands, and close or reopen the runway when it is safe to do so. The control desk presents runway and taxiway occupancy and the live arrival sequence. It does not yet implement a full procedural ATC phraseology model, configurable SID/STAR procedures, multiple intersecting runways or independently routed taxiway nodes.

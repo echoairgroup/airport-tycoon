@@ -213,3 +213,38 @@ test('traffic snapshot separates arrivals, holding, taxiing and parked aircraft'
   assert.equal(traffic.occupiedGates, 2);
   assert.equal(traffic.freeGates, 0);
 });
+
+import { holdArrival, clearArrival, setRunwayClosed } from '../src/engine/simulation.js';
+
+test('ATC can instruct an inbound arrival to enter the holding pattern', () => {
+  const state = INITIAL_STATE();
+  state.buildings.push({ id: 'gate-west', type: 'gate', x: -16, z: 8.5 });
+  const arrival = scheduleArrival(state);
+  assert.equal(holdArrival(state, arrival.id).ok, true);
+  assert.equal(arrival.phase, 'holding');
+});
+
+test('ATC only clears a holding aircraft when the approach is free', () => {
+  const state = INITIAL_STATE();
+  state.buildings.push({ id: 'gate-west', type: 'gate', x: -16, z: 8.5 });
+  const first = scheduleArrival(state);
+  const second = scheduleArrival(state, { model: 'Airbus A320neo', airline: 'CloudJet', destination: 'London' });
+  assert.equal(second.phase, 'holding');
+  assert.equal(clearArrival(state, second.id).ok, false);
+  assert.equal(holdArrival(state, first.id).ok, true);
+  assert.equal(clearArrival(state, second.id).ok, true);
+  assert.equal(second.phase, 'approach');
+});
+
+test('ATC runway closure holds arrivals and prevents unsafe clearances', () => {
+  const state = INITIAL_STATE();
+  const arrival = scheduleArrival(state);
+  assert.equal(setRunwayClosed(state, true).ok, true);
+  assert.equal(state.runwayClosed, true);
+  assert.equal(arrival.phase, 'holding');
+  const second = scheduleArrival(state);
+  assert.equal(second.phase, 'holding');
+  assert.equal(clearArrival(state, arrival.id).reason, 'runway-closed');
+  assert.equal(setRunwayClosed(state, false).ok, true);
+  assert.equal(clearArrival(state, arrival.id).ok, true);
+});
