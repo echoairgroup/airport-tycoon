@@ -217,17 +217,17 @@ function renderAtc() {
   const flights=activeFlights();
   const runway=flights.find(f=>['approach','landing-rollout','taxi-out','takeoff'].includes(f.phase));
   const holding=flights.filter(f=>f.phase==='holding');
-  return \`\${panelHeader('AIR TRAFFIC CONTROL','ATC operations','Manage runway sequencing, arrival holding and stand clearances.')}
-    <div class="operations-hero"><div><small>RUNWAY 09 / 27</small><strong>\${runway?'OCCUPIED · '+runway.id:'RUNWAY AVAILABLE'}</strong><span>\${runway?flightPhaseLabel(runway.phase):'No aircraft on the runway'}</span></div><span class="operations-live-dot"></span></div>
-    <div class="content-card"><div class="card-heading"><h3>Controller mode</h3><span class="status-pill \${state.atcMode==='manual'?'warning':'active'}">\${(state.atcMode||'auto').toUpperCase()}</span></div>
+  return `${panelHeader('AIR TRAFFIC CONTROL','ATC operations','Manage runway sequencing, arrival holding and stand clearances.')}
+    <div class="operations-hero"><div><small>RUNWAY 09 / 27</small><strong>${runway?'OCCUPIED · '+runway.id:'RUNWAY AVAILABLE'}</strong><span>${runway?flightPhaseLabel(runway.phase):'No aircraft on the runway'}</span></div><span class="operations-live-dot"></span></div>
+    <div class="content-card"><div class="card-heading"><h3>Controller mode</h3><span class="status-pill ${state.atcMode==='manual'?'warning':'active'}">${(state.atcMode||'auto').toUpperCase()}</span></div>
       <p class="muted-label">Automatic mode clears the next eligible aircraft. Manual mode waits for your clearance.</p>
-      <div class="setting-actions"><button class="secondary-small" data-action="atc-mode" data-mode="auto" \${state.atcMode!=='manual'?'disabled':''}>AUTOMATIC ATC</button><button class="secondary-small" data-action="atc-mode" data-mode="manual" \${state.atcMode==='manual'?'disabled':''}>MANUAL CONTROL</button></div>
+      <div class="setting-actions"><button class="secondary-small" data-action="atc-mode" data-mode="auto" ${state.atcMode!=='manual'?'disabled':''}>AUTOMATIC ATC</button><button class="secondary-small" data-action="atc-mode" data-mode="manual" ${state.atcMode==='manual'?'disabled':''}>MANUAL CONTROL</button></div>
     </div>
-    <div class="section-title"><h3>Arrival holding queue</h3><span class="muted-label">\${holding.length} WAITING</span></div>
-    <div class="content-card">\${holding.map(f=>'<div class="facility-row"><span><b>'+f.id+'</b> · '+f.airline+' · '+f.model+'</span><button class="secondary-small" data-clear-flight="'+f.id+'" '+(runway?'disabled':'')+'>CLEAR TO LAND</button></div>').join('')||'<div class="empty-state">No aircraft are waiting for an ATC clearance.</div>'}</div>
-    <div class="section-title"><h3>Live traffic</h3><span class="muted-label">\${flights.length} ACTIVE</span></div>
-    <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRCRAFT</th><th>DESTINATION</th><th>STAND</th><th>PHASE</th></tr></thead><tbody>\${flights.map(f=>'<tr><td><b>'+f.id+'</b></td><td>'+f.model+'</td><td>'+f.destination+'</td><td>'+(f.gateId==='initial-gate'?'01':f.gateId||'HOLD')+'</td><td>'+flightPhaseLabel(f.phase)+'</td></tr>').join('')||'<tr><td colspan="5" class="table-empty">No active movements.</td></tr>'}</tbody></table></div>
-    <div class="info-note"><b>Runway protection</b><span>The simulator prevents two aircraft from occupying runway phases simultaneously. Each arriving aircraft must also reserve an available stand before it receives an approach clearance.</span></div>\`;
+    <div class="section-title"><h3>Arrival holding queue</h3><span class="muted-label">${holding.length} WAITING</span></div>
+    <div class="content-card">${holding.map(f=>'<div class="facility-row"><span><b>'+f.id+'</b> · '+f.airline+' · '+f.model+'</span><button class="secondary-small" data-clear-flight="'+f.id+'" '+(runway?'disabled':'')+'>CLEAR TO LAND</button></div>').join('')||'<div class="empty-state">No aircraft are waiting for an ATC clearance.</div>'}</div>
+    <div class="section-title"><h3>Live traffic</h3><span class="muted-label">${flights.length} ACTIVE</span></div>
+    <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRCRAFT</th><th>DESTINATION</th><th>STAND</th><th>PHASE</th></tr></thead><tbody>${flights.map(f=>'<tr><td><b>'+f.id+'</b></td><td>'+f.model+'</td><td>'+f.destination+'</td><td>'+(f.gateId==='initial-gate'?'01':f.gateId||'HOLD')+'</td><td>'+flightPhaseLabel(f.phase)+'</td></tr>').join('')||'<tr><td colspan="5" class="table-empty">No active movements.</td></tr>'}</tbody></table></div>
+    <div class="info-note"><b>Runway protection</b><span>The simulator prevents two aircraft from occupying runway phases simultaneously. Each arriving aircraft must also reserve an available stand before it receives an approach clearance.</span></div>`;
 }
 
 function renderFlights() {
