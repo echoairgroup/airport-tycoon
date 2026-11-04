@@ -3,6 +3,7 @@ import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from 
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney, LOAN_OFFERS, INVESTMENT_DEFS, takeLoan, repayLoan, setTaxRate, investInProject } from './engine/economy.js';
 import { tickGame, flightPhaseLabel, giveXP, resolveIncident, scheduleArrival, holdArrival, clearArrival, setRunwayClosed } from './engine/simulation.js';
+import { purchaseLandParcel, getNextLandParcelCost } from './engine/land.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
 
 let state = INITIAL_STATE();
@@ -30,6 +31,7 @@ const activeFlightList = () => Array.isArray(state.activeFlights) ? state.active
 function bootWorld() {
   world = new AirportWorld($('game-world'), onWorldClick, onWorldHover);
   world.addInitialGate();
+  for (const parcel of (state.landParcels || [])) world.addLandParcel(parcel);
   for (const building of state.buildings) world.addBuilding(building);
   world.setWeather(state.weather);
   world.syncFlights(activeFlightList());
@@ -101,7 +103,7 @@ function onWorldHover(pos) {
 }
 
 function getPlacementStatus(type, x, z) {
-  return validatePlacement(type, x, z, state.buildings);
+  return validatePlacement(type, x, z, state.buildings, state.landParcels || []);
 }
 
 function onWorldClick(pos) {
@@ -206,6 +208,7 @@ function renderBuild() {
   const cats=['All','Operations','Passenger','Transport','Safety','Infrastructure','Logistics'];
   const items=BUILDINGS.filter(b=>(selectedCategory==='All'||b.category===selectedCategory));
   return `${panelHeader('AIRPORT DEVELOPMENT','Build & expand','Choose from the expanded construction campus behind the terminal. Buildings have real footprints and cannot overlap infrastructure or other facilities.',`<button class="small-action" data-action="cancel-build">✕ Cancel placement</button>`)}
+  <div class="land-expansion-panel"><div class="land-expansion-heading"><div><b>Expandable airport land</b><small>${(state.landParcels || []).length} purchased parcels · No fixed parcel limit</small></div><span>${fmt(getNextLandParcelCost(state))} NEXT PLOT</span></div><div class="land-expansion-actions">${[['west','← WEST'],['east','EAST →'],['north','↑ NORTH']].map(([side,label])=>{const owned=(state.landParcels||[]).filter(p=>p.side===side).length;return `<button data-land-side="${side}" ${state.money<getNextLandParcelCost(state)?'disabled':''}><b>${label}</b><small>${owned} plots owned</small></button>`;}).join('')}</div><small class="land-expansion-footnote">Each plot adds real 3D ground and buildable space. Plot prices rise as your airport expands.</small></div>
   <div class="category-tabs">${cats.map(c=>`<button class="category-tab ${selectedCategory===c?'active':''}" data-category="${c}">${c}</button>`).join('')}</div>
   <div class="build-list">${items.map(b=>{const locked=state.level<b.level;const active=selectedBuild===b.id;return `<div class="build-card ${locked?'locked':''} ${active?'selected':''}"><div class="build-icon">${b.icon}</div><div class="build-info"><div class="build-title-row"><b>${b.name}</b>${locked?`<span class="lock-label">LVL ${b.level}</span>`:`<span class="available-label">AVAILABLE</span>`}</div><p>${b.description}</p><div class="build-meta"><span>↗ ${fmt(b.cost)}</span><span>⌁ ${fmt(b.upkeep)}/hr</span><span>⌂ ${b.category}</span></div></div><button class="build-select ${active?'chosen':''}" data-build="${b.id}" ${locked?'disabled':''}>${locked?'LOCKED':active?'SELECTED':'PLACE'}</button></div>`;}).join('')}</div>
   <div class="section-title"><h3>Your facilities</h3><span class="muted-label">${state.buildings.length} BUILT · 55% REFUND</span></div>
@@ -457,6 +460,17 @@ function advanceTutorial(skip = false) {
 }
 
 function handlePanelClick(e) {
+  const land=e.target.closest('[data-land-side]');
+  if(land){
+    const result=purchaseLandParcel(state,land.dataset.landSide);
+    if(!result.ok)notifyLocal('Land purchase unavailable',result.reason==='funds'?'You need '+fmt(result.cost)+' to purchase the next plot.':'Choose a valid expansion direction.','warning');
+    else{
+      world.addLandParcel(result.parcel);
+      world.focusOn(result.parcel.x,result.parcel.z);
+      notifyLocal('Airport land acquired',result.parcel.side.toUpperCase()+' plot '+result.parcel.tier+' is now part of your airport. New construction can use the purchased terrain.','success');
+    }
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
   const loan=e.target.closest('[data-take-loan]');
   if(loan){
     const result=takeLoan(state,loan.dataset.takeLoan);

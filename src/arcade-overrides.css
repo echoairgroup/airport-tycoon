@@ -249,3 +249,26 @@
   .investment-card { grid-template-columns:28px minmax(0,1fr); }
   .investment-card > button { grid-column:2; justify-self:start; }
 }
+
+
+/* Repeatable land acquisition plots */
+.land-expansion-panel {
+  margin:12px 0 16px; padding:13px; border-radius:14px;
+  background:linear-gradient(145deg,rgba(97,166,94,.16),rgba(255,255,255,.035));
+  border:1px solid rgba(153,224,130,.2);
+}
+.land-expansion-heading { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.land-expansion-heading b,.land-expansion-heading small { display:block; }
+.land-expansion-heading b { color:#f2f9f3; font-size:10px; }
+.land-expansion-heading small { margin-top:4px; color:#9eb7a8; font-size:7.5px; }
+.land-expansion-heading > span { color:#b6ef91; font-size:8px; font-weight:900; text-align:right; }
+.land-expansion-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:12px 0 8px; }
+.land-expansion-actions button {
+  min-width:0; padding:9px 5px; border-radius:9px; cursor:pointer; text-align:center;
+  background:rgba(134,197,109,.12); border:1px solid rgba(163,226,135,.2); color:#eaf6e6;
+}
+.land-expansion-actions button b,.land-expansion-actions button small { display:block; }
+.land-expansion-actions button b { font-size:7px; }
+.land-expansion-actions button small { margin-top:5px; color:#a8c6a4; font-size:6.5px; }
+.land-expansion-actions button:disabled { opacity:.38; cursor:not-allowed; }
+.land-expansion-footnote { color:#91a7a0; font-size:7px; line-height:1.5; }

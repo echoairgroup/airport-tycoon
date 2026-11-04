@@ -148,10 +148,10 @@ export class AirportWorld {
     this.onHover = onHover;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#9edcf5');
-    this.scene.fog = new THREE.Fog('#9edcf5', 150, 330);
+    this.scene.fog = new THREE.Fog('#9edcf5', 230, 850);
 
     const aspect = Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight);
-    this.camera = new THREE.OrthographicCamera(-48 * aspect, 48 * aspect, 48, -48, .1, 550);
+    this.camera = new THREE.OrthographicCamera(-48 * aspect, 48 * aspect, 48, -48, .1, 2200);
     this.camera.position.set(83, 105, 105);
     this.camera.zoom = .88;
     this.camera.updateProjectionMatrix();
@@ -178,7 +178,7 @@ export class AirportWorld {
     this.controls.minZoom = .22;
     this.controls.maxZoom = 2.6;
     this.controls.minDistance = 48;
-    this.controls.maxDistance = 300;
+    this.controls.maxDistance = 900;
     this.controls.screenSpacePanning = false;
 
     this.raycaster = new THREE.Raycaster();
@@ -190,6 +190,7 @@ export class AirportWorld {
     this.aircraftKind = null;
     this.aircraftLightTime = 0;
     this.aircraftMeshes = new Map();
+    this.landMeshes = new Map();
     this.parkedAircraft = [];
     this.trafficCars = [];
     this.trafficPath = null;
@@ -834,6 +835,52 @@ export class AirportWorld {
     });
     this.buildings.delete(id);
     return true;
+  }
+
+  addLandParcel(parcel) {
+    if (!parcel?.id || this.landMeshes.has(parcel.id)) return this.landMeshes.get(parcel?.id) || null;
+    const root = new THREE.Group();
+    root.position.set(parcel.x, 0, parcel.z);
+    root.userData = { id: parcel.id, type: 'land-parcel' };
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(parcel.w, parcel.d), material('#86ca65'));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = .018;
+    ground.receiveShadow = true;
+    root.add(ground);
+    const grid = material('#a5df80');
+    for (let x = -parcel.w / 2 + 5; x < parcel.w / 2; x += 10) {
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(.12, parcel.d - .8), grid);
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(x, .045, 0);
+      root.add(line);
+    }
+    for (let z = -parcel.d / 2 + 5; z < parcel.d / 2; z += 10) {
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(parcel.w - .8, .12), grid);
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(0, .045, z);
+      root.add(line);
+    }
+    const edge = material('#dce7e1');
+    box(root, parcel.w, .08, .14, edge, 0, .16, -parcel.d / 2);
+    box(root, parcel.w, .08, .14, edge, 0, .16, parcel.d / 2);
+    box(root, .14, .08, parcel.d, edge, -parcel.w / 2, .16, 0);
+    box(root, .14, .08, parcel.d, edge, parcel.w / 2, .16, 0);
+    const label = makeTextLabel('AIRPORT EXPANSION · ' + parcel.side.toUpperCase(), '#ffffff', [Math.min(22, parcel.w * .22), 1, 1]);
+    label.position.set(0, .2, -parcel.d / 2 + 2.5);
+    root.add(label);
+    this.scene.add(root);
+    this.landMeshes.set(parcel.id, root);
+    return root;
+  }
+
+  focusOn(x, z) {
+    const dx = x - this.controls.target.x;
+    const dz = z - this.controls.target.z;
+    this.controls.target.x = x;
+    this.controls.target.z = z;
+    this.camera.position.x += dx;
+    this.camera.position.z += dz;
+    this.controls.update();
   }
 
   addBuilding(building) {

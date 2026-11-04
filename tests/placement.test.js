@@ -324,3 +324,33 @@ test('investment projects change recurring income and operating savings', () => 
   assert.ok(hourlyExpenseBreakdown(state).baseOperations < 280);
   assert.equal(investInProject(state, 'solar-generation').reason, 'already-owned');
 });
+
+import { purchaseLandParcel, getNextLandParcelCost } from '../src/engine/land.js';
+
+test('expansion land must be purchased before construction can use it', () => {
+  const state = INITIAL_STATE();
+  assert.equal(getPlacementStatus('cafe', 130, 72, state.buildings, state.landParcels).valid, false);
+  assert.equal(getNextLandParcelCost(state), 22000);
+  const purchase = purchaseLandParcel(state, 'east');
+  assert.equal(purchase.ok, true);
+  assert.equal(state.landParcels.length, 1);
+  assert.equal(getPlacementStatus('cafe', 130, 72, state.buildings, state.landParcels).valid, true);
+});
+
+test('purchased land can be expanded repeatedly in multiple directions', () => {
+  const state = INITIAL_STATE();
+  assert.equal(purchaseLandParcel(state, 'north').ok, true);
+  assert.equal(purchaseLandParcel(state, 'west').ok, true);
+  assert.equal(purchaseLandParcel(state, 'north').ok, true);
+  assert.equal(state.landParcels.filter(parcel => parcel.side === 'north').length, 2);
+  assert.equal(getPlacementStatus('hotel', 0, 238, state.buildings, state.landParcels).valid, true);
+});
+
+test('land expansion is charged and cannot be purchased without sufficient funds', () => {
+  const state = INITIAL_STATE();
+  state.money = 100;
+  const result = purchaseLandParcel(state, 'east');
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'funds');
+  assert.equal(state.landParcels.length, 0);
+});

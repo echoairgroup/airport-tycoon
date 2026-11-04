@@ -9,7 +9,7 @@ function rectanglesOverlap(a, b, gap = 0) {
  * Validates a construction footprint against the playable airport zones,
  * fixed infrastructure and every already-built facility.
  */
-export function getPlacementStatus(type, x, z, placedBuildings = []) {
+export function getPlacementStatus(type, x, z, placedBuildings = [], landParcels = []) {
   const item = BUILDINGS.find(b => b.id === type);
   if (!item) return { valid: false, reason: 'Unknown building' };
   const [w, d] = item.footprint || [8, 8];
@@ -28,9 +28,17 @@ export function getPlacementStatus(type, x, z, placedBuildings = []) {
     return { valid: true, reason: 'Valid runway connection' };
   }
 
-  if (Math.abs(x) + w / 2 > 90 || z - d / 2 < -48 || z + d / 2 > 109) {
-    return { valid: false, reason: 'Outside airport boundary' };
-  }
+  const servicePlots = [
+    { minX: -90, maxX: 90, minZ: 30.5, maxZ: 109 },
+    ...landParcels.map(parcel => ({
+      minX: parcel.x - parcel.w / 2, maxX: parcel.x + parcel.w / 2,
+      minZ: parcel.z - parcel.d / 2, maxZ: parcel.z + parcel.d / 2
+    }))
+  ];
+  const insideServicePlot = servicePlots.some(plot =>
+    x - w / 2 >= plot.minX + .35 && x + w / 2 <= plot.maxX - .35 &&
+    z - d / 2 >= plot.minZ + .35 && z + d / 2 <= plot.maxZ - .35
+  );
 
   if (item.zone === 'apron') {
     if (x - w / 2 < -28 || x + w / 2 > 28 || z - d / 2 < 2 || z + d / 2 > 15) {
@@ -51,9 +59,9 @@ export function getPlacementStatus(type, x, z, placedBuildings = []) {
     return { valid: true, reason: 'Valid gate stand' };
   }
 
-  // Non-airside facilities belong in the marked service yard behind the terminal.
-  if (z - d / 2 < 30.5 || z + d / 2 > 109) {
-    return { valid: false, reason: 'Place this facility in the marked service yard' };
+  // Service facilities may use the original yard or any purchased expansion parcel.
+  if (!insideServicePlot) {
+    return { valid: false, reason: 'Outside owned airport land — purchase an expansion parcel first' };
   }
   const fixedObstacles = [
     { x: -38, z: 34, w: 8, d: 6, label: 'Maintenance shed' },

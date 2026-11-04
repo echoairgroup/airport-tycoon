@@ -90,3 +90,7 @@ Passenger flights now pass through baggage unloading, refuelling, catering, tech
 ### Loans, corporate tax and capital investments
 
 The 1.2 finance layer supports three optional loan sizes with transparent game-hour interest and scheduled principal repayment, early full repayment, selectable corporate tax rates and one-time capital projects. Taxes are calculated on positive operating profit after the recurring operating and financing cost base. Purchased investments flow into the same recurring income/savings/maintenance totals used by the bank balance and finance panel. Existing save games receive empty loan/investment ledgers and the default 8% tax policy during save format 5 migration.
+
+### Repeatable airport land expansion
+
+Airport management now supports repeatable land acquisitions to the west, east and north. Every purchase creates a saved parcel with its own coordinates and a matching 3D terrain/grid tile; the placement validator accepts service buildings only inside the original yard or owned parcels. Costs rise with each acquired parcel. Purchased parcels are restored when an existing airport save is loaded. This is expandable plot-based construction, not a streamed planetary world: the existing runway/apron and terminal approach remain fixed airside infrastructure until a later airport-layout/pathfinding redesign.

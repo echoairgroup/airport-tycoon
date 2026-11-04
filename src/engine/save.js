@@ -104,6 +104,7 @@ function migrateV5(parsed) {
     version: 5,
     loans: Array.isArray(parsed.loans) ? parsed.loans.filter(loan => loan && Number(loan.balance) > 0) : [],
     investments: Array.isArray(parsed.investments) ? parsed.investments : [],
+    landParcels: Array.isArray(parsed.landParcels) ? parsed.landParcels.filter(parcel => parcel && ['east','west','north'].includes(parcel.side) && Number.isFinite(parcel.x) && Number.isFinite(parcel.z) && Number.isFinite(parcel.w) && Number.isFinite(parcel.d)) : [],
     taxRate,
     taxPaid: Number(parsed.taxPaid) || 0,
     loanInterestPaid: Number(parsed.loanInterestPaid) || 0
