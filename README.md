@@ -11,7 +11,7 @@ A browser-based 3D airport management game built with Three.js and Vite. Build a
 - Procedural passenger aircraft, passenger jets and cargo freighters.
 - Scheduled flight lifecycle: approach, landing, rollout, taxi-in, turnaround, taxi-out and take-off.
 - Two visible parked aircraft, animated passengers, baggage tug and carts.
-- Surrounding town with houses, shops and continuously moving road traffic.
+- Surrounding town with houses, shops and continuously moving road traffic on a 14-car regional road network.
 - Day/night lighting, changing weather and four seasonal landscape palettes.
 
 ### Management and progression
