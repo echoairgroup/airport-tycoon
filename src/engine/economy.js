@@ -19,7 +19,7 @@ export function hourlyExpenseBreakdown(state) {
   const wages = Object.values(state.staff).reduce((sum, count) => sum + count * 55, 0);
   const maintenance = state.buildings.reduce((sum, building) => sum + (building.upkeep || 0), 0);
   const runwayMaintenance = Math.max(0, 82 - (state.runwayCondition ?? 100)) * 1.35;
-  const loanInterest = Math.max(0, Number(state.loanDebt) || 0) * 0.00008;
+  const loanInterest = Math.max(0, Number(state.loanDebt) || 0) * 0.000012;
   return {
     wages,
     baseOperations: 280,
