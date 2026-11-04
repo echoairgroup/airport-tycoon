@@ -274,6 +274,7 @@ function renderFinances() {
     ['Base airport operations', expenseParts.baseOperations],
     ['Building maintenance', expenseParts.buildingMaintenance],
     ['Runway wear & maintenance', expenseParts.runwayMaintenance],
+    ['Loan interest', expenseParts.loanInterest || 0],
   ];
   return `${panelHeader('AIRPORT ECONOMY','Finances','See every recurring payment and watch the money actually enter or leave your airport account.')}
   <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} net per game hour · automatically paid</span></div><div class="balance-icon">€</div></div>
@@ -283,6 +284,18 @@ function renderFinances() {
   <div class="content-card"><div class="card-heading"><h3>Operating expenses</h3><span class="muted-label">PER GAME HOUR</span></div>${expenseLabels.map(([label,value])=>`<div class="facility-row"><span>${label}</span><b class="bad-text">−${fmt(value)}</b></div>`).join('')}<div class="facility-row"><span><b>Net recurring result</b></span><b class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)}</b></div></div>
   <div class="content-card chart-card"><div class="card-heading"><h3>Recent flight performance</h3><span class="muted-label">PER COMPLETED FLIGHT</span></div><div class="chart-legend"><span><i class="legend-income"></i> Revenue</span><span><i class="legend-expense"></i> Expenses</span></div><div class="bar-chart">${history.map(h=>`<div class="bar-group"><div class="bar-pair"><i class="bar-income" style="height:${Math.max(2,h.income/max*100)}%" title="Revenue ${fmt(h.income)}"></i><i class="bar-expense" style="height:${Math.max(2,h.expenses/max*100)}%" title="Expenses ${fmt(h.expenses)}"></i></div><small>${h.label}</small></div>`).join('')||'<div class="empty-state">Complete a flight to start building your financial history.</div>'}</div></div>
   <div class="maintenance-card"><div><small>RUNWAY SURFACE CONDITION</small><strong>${Math.round(state.runwayCondition ?? 100)}%</strong><p>Landings wear the asphalt. Repair the surface to keep maintenance costs under control.</p><div class="satisfaction-bar"><i style="width:${state.runwayCondition ?? 100}%"></i></div></div><button class="primary-small" data-action="repair-runway" ${(state.runwayCondition ?? 100) >= 99 ? 'disabled' : ''}>REPAIR · ${fmt(Math.round((100-(state.runwayCondition ?? 100))*140+250))}</button></div>
+  <div class="content-card"><div class="card-heading"><h3>Airport financing</h3><span class="muted-label">BANK FACILITIES</span></div>
+    <div class="facility-row"><span>Outstanding loan balance</span><b>\${fmt(state.loanDebt||0)}</b></div>
+    <div class="facility-row"><span>Financing interest</span><b class="bad-text">\${fmt(expenseParts.loanInterest||0)} / game hour</b></div>
+    <div class="setting-actions"><button class="secondary-small" data-action="take-loan" data-amount="50000">BORROW €50,000</button><button class="secondary-small" data-action="take-loan" data-amount="100000">BORROW €100,000</button><button class="secondary-small" data-action="repay-loan">REPAY €10,000</button></div>
+    <div class="section-title"><h3>Airport investments</h3><span class="muted-label">7-DAY TERM · 8% RETURN</span></div>
+    <div class="facility-row"><span>Active investments</span><b>\${(state.investments||[]).length}</b></div>
+    <div class="setting-actions"><button class="secondary-small" data-action="invest" data-amount="5000">INVEST €5,000</button><button class="secondary-small" data-action="invest" data-amount="10000">INVEST €10,000</button><button class="secondary-small" data-action="invest" data-amount="25000">INVEST €25,000</button></div>
+    <div class="facility-row"><span>Taxes paid to date</span><b>\${fmt(state.taxesPaid||0)}</b></div>
+    <small class="save-detail">Tax is 12% of positive daily operating profit. Three consecutive in-game days with negative cash trigger insolvency and pause the simulation.</small>
+    \${(state.investments||[]).map(item=>'<div class="facility-row"><span>'+item.label+' · matures '+timeLabel(item.matureAt)+'</span><b>'+fmt(item.returnValue)+'</b></div>').join('')}
+  </div>
+  \${state.bankrupt?'<div class="incident-card"><b>Airport insolvent</b><p>The airport has reached the insolvency threshold. Secure financing or reduce operating costs before resuming.</p></div>':''}
   <div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>`;
 }
 function renderResearch() {
