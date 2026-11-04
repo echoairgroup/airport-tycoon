@@ -61,6 +61,12 @@ export function getPlacementStatus(type, x, z, placedBuildings = [], landParcels
 
   // Service facilities may use the original yard or any purchased expansion parcel.
   if (!insideServicePlot) {
+    if (x - w / 2 < -90 || x + w / 2 > 90) {
+      return { valid: false, reason: 'Outside airport boundary — purchase an expansion parcel first' };
+    }
+    if (z - d / 2 < 30.5 || z + d / 2 > 109) {
+      return { valid: false, reason: 'Outside service yard boundary — purchase an expansion parcel first' };
+    }
     return { valid: false, reason: 'Outside owned airport land — purchase an expansion parcel first' };
   }
   const fixedObstacles = [
