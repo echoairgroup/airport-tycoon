@@ -366,3 +366,13 @@ test('manual flight planning accepts the international world route catalogue', (
   assert.equal(flight.airline, 'Global Connect');
   assert.equal(WORLD_DESTINATIONS.some(item => item.city === flight.destination && item.iata === 'JFK'), true);
 });
+
+import { setAirportAudioVolume, getAirportAudioVolume } from '../src/engine/audio.js';
+
+test('airport ambience volume is clamped to a safe user-controlled range', () => {
+  assert.equal(setAirportAudioVolume(.5), .5);
+  assert.equal(getAirportAudioVolume(), .5);
+  assert.equal(setAirportAudioVolume(3), .8);
+  assert.equal(setAirportAudioVolume(-1), 0);
+  assert.equal(setAirportAudioVolume('invalid'), 0);
+});

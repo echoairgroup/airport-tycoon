@@ -94,3 +94,10 @@ The 1.2 finance layer supports three optional loan sizes with transparent game-h
 ### Repeatable airport land expansion
 
 Airport management now supports repeatable land acquisitions to the west, east and north. Every purchase creates a saved parcel with its own coordinates and a matching 3D terrain/grid tile; the placement validator accepts service buildings only inside the original yard or owned parcels. Costs rise with each acquired parcel. Purchased parcels are restored when an existing airport save is loaded. This is expandable plot-based construction, not a streamed planetary world: the existing runway/apron and terminal approach remain fixed airside infrastructure until a later airport-layout/pathfinding redesign.
+
+### Global routes, campaign chapters and airport ambience
+
+- The world-map panel now lists 19 international destination airports around the Skyport hub, with IATA codes, countries and approximate one-way distances.
+- Players can pick an aircraft and airline and schedule a destination directly into the multi-aircraft traffic system.
+- Mission objectives are grouped into three longer campaign chapters: Regional airport, International gateway and Major airport hub. They include long-term milestones for flight volume, passengers, land expansion, airline contracts, cargo, airport level and construction.
+- Settings now include a user-activated procedural ambience soundscape with volume controls. It synthesises soft wind, terminal ventilation and low airfield ambience through Web Audio; it is not a library of recorded aircraft, vehicle or ATC sounds.

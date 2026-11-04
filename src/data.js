@@ -225,8 +225,21 @@ export const MISSION_DEFS = [
   { id: 'build-gate', title: 'Room to grow', description: 'Build an additional aircraft gate.', reward: 3500, xp: 100, goal: 1, metric: 'extraGates', icon: '🛫' },
   { id: 'cash-100k', title: 'Money is rolling in', description: 'Reach a cash balance of €100,000.', reward: 7500, xp: 180, goal: 100000, metric: 'money', icon: '€' },
   { id: 'cargo-100', title: 'Freight forwarding', description: 'Handle 100 tonnes of cargo.', reward: 9000, xp: 200, goal: 100, metric: 'cargoTonsHandled', icon: '📦' },
-  { id: 'contracts-3', title: 'Airline partner', description: 'Complete three airline contracts.', reward: 11000, xp: 240, goal: 3, metric: 'contractsCompleted', icon: '🤝' }
-];
+  { id: 'contracts-3', title: 'Airline partner', description: 'Complete three airline contracts.', reward: 11000, xp: 240, goal: 3, metric: 'contractsCompleted', icon: '🤝' },
+
+  { id: 'regional-ten-flights', chapter: 'Regional airport', title: 'Reliable regional operator', description: 'Complete 10 departures and establish a dependable regional service.', reward: 18000, xp: 360, goal: 10, metric: 'flightsCompleted', icon: '🛫' },
+  { id: 'regional-500-passengers', chapter: 'Regional airport', title: 'Five hundred journeys', description: 'Serve 500 passengers through your airport.', reward: 15000, xp: 320, goal: 500, metric: 'totalPassengers', icon: '♙' },
+  { id: 'regional-land-expansion', chapter: 'Regional airport', title: 'Room for the next terminal', description: 'Acquire three additional airport land parcels.', reward: 14000, xp: 300, goal: 3, metric: 'landParcels', icon: '🌱' },
+  { id: 'international-25-flights', chapter: 'International gateway', title: 'Connecting the continent', description: 'Complete 25 flights and begin serving a wider international network.', reward: 32000, xp: 600, goal: 25, metric: 'flightsCompleted', icon: '🌍' },
+  { id: 'international-contracts', chapter: 'International gateway', title: 'Trusted airline partner', description: 'Complete five airline service agreements.', reward: 28000, xp: 550, goal: 5, metric: 'contractsCompleted', icon: '🤝' },
+  { id: 'international-cargo', chapter: 'International gateway', title: 'Freight gateway', description: 'Handle 250 tonnes of international cargo.', reward: 30000, xp: 580, goal: 250, metric: 'cargoTonsHandled', icon: '📦' },
+  { id: 'international-six-gates', chapter: 'International gateway', title: 'A proper apron', description: 'Build five additional aircraft gates.', reward: 26000, xp: 520, goal: 5, metric: 'extraGates', icon: '🛬' },
+  { id: 'hub-level-ten', chapter: 'Major airport hub', title: 'National airport status', description: 'Reach airport level 10.', reward: 50000, xp: 900, goal: 10, metric: 'airportLevel', icon: '🏆' },
+  { id: 'hub-balance-500k', chapter: 'Major airport hub', title: 'Half-million reserve', description: 'Build and maintain a cash reserve of €500,000.', reward: 45000, xp: 850, goal: 500000, metric: 'money', icon: '€' },
+  { id: 'hub-75-flights', chapter: 'Major airport hub', title: 'A busy international hub', description: 'Complete 75 flights through your airport.', reward: 65000, xp: 1100, goal: 75, metric: 'flightsCompleted', icon: '✈' },
+  { id: 'hub-ten-parcels', chapter: 'Major airport hub', title: 'Airport city', description: 'Acquire ten expansion parcels for long-term airport growth.', reward: 80000, xp: 1300, goal: 10, metric: 'landParcels', icon: '🏙️' },
+  { id: 'hub-25-constructions', chapter: 'Major airport hub', title: 'Master developer', description: 'Construct 25 additional airport facilities.', reward: 70000, xp: 1200, goal: 25, metric: 'constructions', icon: '🏗️' }
+ ];
 
 export const CONTRACT_DEFS = [
   { id: 'regional-partner', name: 'Regional Network Partnership', client: 'Northstar Air', description: 'Operate two passenger flights with at least 60 passengers each.', kind: 'passenger', target: 2, minimumPassengers: 60, reward: 12500, xp: 210, level: 1, icon: '🛩️' },

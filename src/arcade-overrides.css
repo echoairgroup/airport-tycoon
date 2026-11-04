@@ -325,3 +325,23 @@
 .world-destination-card small { margin-top:3px; color:#9eb7c4; font-size:6px; }
 .world-destination-card>strong { color:#b5d3dd; font-size:7px; white-space:nowrap; }
 @media(max-width:480px) { .world-destination-list,.world-flight-config { grid-template-columns:1fr; } }
+
+
+/* Campaign chapters and airport soundscape controls */
+.campaign-overview { margin:12px 0 18px; padding:13px; border-radius:12px; background:rgba(113,171,112,.1); border:1px solid rgba(154,216,137,.18); }
+.campaign-overview>div:first-child small,.campaign-overview>div:first-child b,.campaign-overview>div:first-child span { display:block; }
+.campaign-overview>div:first-child small { color:#9fbaa4; font-size:7px; letter-spacing:.1em; font-weight:800; }
+.campaign-overview>div:first-child b { margin-top:4px; color:#eff8e9; font-size:17px; }
+.campaign-overview>div:first-child span { color:#9eb7a4; font-size:7px; }
+.campaign-progress { height:5px; margin-top:10px; border-radius:9px; background:rgba(255,255,255,.1); overflow:hidden; }
+.campaign-progress i { display:block; height:100%; border-radius:9px; background:linear-gradient(90deg,#82ca75,#c1ef88); }
+.campaign-chapter { margin:16px 0 20px; }
+.campaign-chapter-heading { display:flex; justify-content:space-between; align-items:end; gap:8px; padding-bottom:8px; border-bottom:1px solid rgba(232,245,250,.12); }
+.campaign-chapter-heading small,.campaign-chapter-heading b { display:block; }
+.campaign-chapter-heading small { color:#9cbbcc; font-size:6px; letter-spacing:.12em; font-weight:900; }
+.campaign-chapter-heading b { margin-top:4px; color:#eff7fa; font-size:12px; }
+.campaign-chapter-heading span { color:#a4dc9b; font-size:7px; font-weight:900; white-space:nowrap; }
+.audio-volume-buttons { display:flex; gap:5px; }
+.audio-volume-buttons button { padding:6px 7px; font-size:7px; }
+.audio-volume-buttons button.active { border-color:rgba(158,231,123,.7); color:#b1f18c; background:rgba(110,179,75,.16); }
+@media(max-width:480px) { .audio-volume-buttons { flex-wrap:wrap; justify-content:flex-end; } }

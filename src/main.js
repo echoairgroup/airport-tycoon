@@ -4,6 +4,7 @@ import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney, LOAN_OFFERS, INVESTMENT_DEFS, takeLoan, repayLoan, setTaxRate, investInProject } from './engine/economy.js';
 import { tickGame, flightPhaseLabel, giveXP, resolveIncident, scheduleArrival, holdArrival, clearArrival, setRunwayClosed } from './engine/simulation.js';
 import { purchaseLandParcel, getNextLandParcelCost } from './engine/land.js';
+import { startAirportAudio, stopAirportAudio, setAirportAudioVolume, isAirportAudioRunning, getAirportAudioVolume } from './engine/audio.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
 
 let state = INITIAL_STATE();
@@ -12,6 +13,8 @@ let currentTab = 'overview';
 let selectedBuild = null;
 let selectedCategory = 'All';
 let terminalInteriorVisible = false;
+let airportAudioEnabled = false;
+let airportAudioVolume = .32;
 let selectedWorldDestination = 'London';
 let selectedWorldModel = 'Airbus A320neo';
 let selectedWorldAirline = 'CloudJet';
@@ -423,11 +426,17 @@ function renderGuide() {
 
 function missionProgress(m) {
   if(m.metric==='extraGates') return extraGates();
+  if(m.metric==='landParcels') return (state.landParcels || []).length;
+  if(m.metric==='airportLevel') return state.level;
+  if(m.metric==='constructions') return state.stats.constructions;
   return state[m.metric] ?? 0;
 }
 function renderMissions() {
-  return `${panelHeader('GOALS & REWARDS','Missions','Complete airport milestones to earn cash and experience points.')}
-  <div class="mission-list">${MISSION_DEFS.map(m=>{const progress=missionProgress(m);const complete=progress>=m.goal;const claimed=state.missionsClaimed.includes(m.id);return `<div class="mission-card ${claimed?'claimed':''}"><div class="mission-icon">${m.icon}</div><div class="mission-info"><div class="mission-title-row"><b>${m.title}</b>${claimed?'<span class="status-pill">CLAIMED</span>':complete?'<span class="available-label">COMPLETED</span>':''}</div><p>${m.description}</p><div class="mini-progress"><div style="width:${Math.min(100,progress/m.goal*100)}%"></div></div><small>${Math.min(progress,m.goal).toLocaleString('en-GB')} / ${m.goal.toLocaleString('en-GB')}</small></div><div class="mission-reward"><b>${fmt(m.reward)}</b><small>+${m.xp} XP</small><button data-claim="${m.id}" ${!complete||claimed?'disabled':''}>${claimed?'CLAIMED':complete?'CLAIM':'IN PROGRESS'}</button></div></div>`;}).join('')}</div>`;
+  const chapterNames=[...new Set(MISSION_DEFS.map(m=>m.chapter||'Airport foundations'))];
+  return `${panelHeader('GOALS & REWARDS','Missions & campaigns','Build a regional airport, expand into an international gateway and grow into a major hub. Claim rewards as you complete each chapter.')}
+    <div class="campaign-overview"><div><small>CAMPAIGN PROGRESS</small><b>${state.missionsClaimed.length} / ${MISSION_DEFS.length}</b><span>milestones claimed</span></div><div class="campaign-progress"><i style="width:${Math.min(100,state.missionsClaimed.length/MISSION_DEFS.length*100)}%"></i></div></div>
+    ${chapterNames.map((chapter,index)=>{const items=MISSION_DEFS.filter(m=>(m.chapter||'Airport foundations')===chapter);const complete=items.filter(m=>missionProgress(m)>=m.goal).length;return `<section class="campaign-chapter"><div class="campaign-chapter-heading"><div><small>CHAPTER ${String(index+1).padStart(2,'0')}</small><b>${chapter}</b></div><span>${complete} / ${items.length} READY</span></div><div class="mission-list">${items.map(m=>{const progress=missionProgress(m),done=progress>=m.goal,claimed=state.missionsClaimed.includes(m.id);return `<div class="mission-card ${claimed?'claimed':''}"><div class="mission-icon">${m.icon}</div><div class="mission-info"><div class="mission-title-row"><b>${m.title}</b>${claimed?'<span class="status-pill">CLAIMED</span>':done?'<span class="available-label">COMPLETED</span>':''}</div><p>${m.description}</p><div class="mini-progress"><div style="width:${Math.min(100,progress/m.goal*100)}%"></div></div><small>${Math.min(progress,m.goal).toLocaleString('en-GB')} / ${m.goal.toLocaleString('en-GB')}</small></div><div class="mission-reward"><b>${fmt(m.reward)}</b><small>+${m.xp} XP</small><button data-claim="${m.id}" ${!done||claimed?'disabled':''}>${claimed?'CLAIMED':done?'CLAIM':'IN PROGRESS'}</button></div></div>`;}).join('')}</div></section>`}).join('')}
+  `;
 }
 function renderStatistics() {
   return `${panelHeader('AIRPORT ANALYTICS','Statistics','Long-term performance indicators for your growing airport.')}
@@ -438,7 +447,7 @@ function renderStatistics() {
 function renderSettings() {
   return `${panelHeader('GAME OPTIONS','Settings','Manage your save, simulation preferences and visual quality.')}
   <div class="settings-group"><h3>Graphics</h3><div class="setting-row"><div><b>Rendering quality</b><small>Lower quality can improve performance on older computers.</small></div><select id="quality-select"><option ${graphicsQuality==='High'?'selected':''}>High</option><option ${graphicsQuality==='Medium'?'selected':''}>Medium</option><option ${graphicsQuality==='Low'?'selected':''}>Low</option></select></div></div>
-  <div class="settings-group"><h3>Audio</h3><div class="setting-row"><div><b>Music and sound effects</b><small>The audio engine is scheduled for a later development phase.</small></div><span class="status-pill">NOT IN PHASE 1</span></div></div>
+  <div class="settings-group"><h3>Airport soundscape</h3><div class="setting-row"><div><b>Ambient airport audio</b><small>Procedurally generated low-level wind, terminal ventilation and distant airfield ambience. Start audio with a click.</small></div><button class="${airportAudioEnabled?'danger-small':'primary-small'}" data-action="audio-toggle">${airportAudioEnabled?'MUTE SOUND':'ENABLE SOUND'}</button></div><div class="setting-row"><div><b>Sound volume</b><small>${Math.round(airportAudioVolume*100)}% master ambience</small></div><div class="audio-volume-buttons">${[.15,.32,.5,.7].map(value=>`<button class="secondary-small ${Math.abs(airportAudioVolume-value)<.01?'active':''}" data-audio-volume="${value}">${Math.round(value*100)}%</button>`).join('')}</div></div><small class="save-detail">The current soundscape is synthesised in the browser; recorded aircraft, vehicle, radio and terminal announcement samples are not included yet.</small></div>
   <div class="settings-group"><h3>Simulation</h3><div class="setting-row"><div><b>Automatic saving</b><small>Your airport is saved automatically every 10 seconds.</small></div><span class="status-pill active">ENABLED</span></div><div class="setting-row"><div><b>Game speed</b><small>Choose the speed from the controls at the bottom of the screen.</small></div><b>${state.speed===0?'Paused':`${state.speed}×`}</b></div></div>
   <div class="settings-group"><h3>Save management</h3><div class="setting-actions"><button class="primary-small" data-action="save">▣ Save now</button><button class="secondary-small" data-action="load">↶ Load saved game</button><button class="danger-small" data-action="new-game">＋ New airport</button></div><small class="save-detail">Save data is stored locally in this browser. Clearing browser storage can remove the save.</small></div>`;
 }
@@ -497,6 +506,18 @@ function advanceTutorial(skip = false) {
 }
 
 function handlePanelClick(e) {
+  if(e.target.closest('[data-action="audio-toggle"]')){
+    if(airportAudioEnabled){stopAirportAudio();airportAudioEnabled=false;notifyLocal('Airport sound muted','Ambient airport audio has been switched off.','info');}
+    else if(startAirportAudio()){airportAudioEnabled=true;notifyLocal('Airport sound enabled','Procedural wind and terminal ambience are now playing.','success');}
+    else notifyLocal('Audio unavailable','This browser does not support Web Audio or could not start the soundscape.','warning');
+    renderPanel();return;
+  }
+  const volume=e.target.closest('[data-audio-volume]');
+  if(volume){
+    airportAudioVolume=Number(volume.dataset.audioVolume);
+    setAirportAudioVolume(airportAudioVolume);
+    renderPanel();return;
+  }
   const worldDestination=e.target.closest('[data-world-destination]');
   if(worldDestination){
     selectedWorldDestination=worldDestination.dataset.worldDestination;
