@@ -86,6 +86,7 @@ function migrateV4(parsed) {
   return {
     ...parsed,
     version: 4,
+    atcMode: parsed.atcMode === 'manual' ? 'manual' : 'auto',
     activeFlights,
     activeFlight: activeFlights[0] || null,
     nextFlightNumber: Math.max(1, Number(parsed.nextFlightNumber) || (Number(parsed.flightsCompleted) || 0) + activeFlights.length + 1),
