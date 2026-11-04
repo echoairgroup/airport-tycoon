@@ -152,8 +152,8 @@ export class AirportWorld {
 
     const aspect = Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight);
     this.camera = new THREE.OrthographicCamera(-48 * aspect, 48 * aspect, 48, -48, .1, 550);
-    this.camera.position.set(70, 83, 72);
-    this.camera.zoom = 1.06;
+    this.camera.position.set(83, 105, 105);
+    this.camera.zoom = .88;
     this.camera.updateProjectionMatrix();
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -167,7 +167,7 @@ export class AirportWorld {
     this.container.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.set(0, 0, 13);
+    this.controls.target.set(0, 0, 36);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = .075;
     this.controls.enablePan = true;
@@ -175,10 +175,10 @@ export class AirportWorld {
     this.controls.rotateSpeed = .62;
     this.controls.minPolarAngle = .34;
     this.controls.maxPolarAngle = Math.PI * .46;
-    this.controls.minZoom = .62;
-    this.controls.maxZoom = 2.05;
+    this.controls.minZoom = .22;
+    this.controls.maxZoom = 2.6;
     this.controls.minDistance = 48;
-    this.controls.maxDistance = 190;
+    this.controls.maxDistance = 300;
     this.controls.screenSpacePanning = false;
 
     this.raycaster = new THREE.Raycaster();
@@ -209,6 +209,7 @@ export class AirportWorld {
     this.createTerminal();
     this.createEnvironment();
     this.createDistrict();
+    this.createRegionalLandscape();
     this.createPedestrians();
     this.createServiceVehicles();
     this.createParkedAircraft();
@@ -243,42 +244,69 @@ export class AirportWorld {
   }
 
   createTerrain() {
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(245, 190), shared.grass);
+    // A much wider continuous landscape leaves room for the airport to grow.
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(420, 360), shared.grass);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.set(0, 0, 5);
+    ground.position.set(0, 0, 14);
     ground.receiveShadow = true;
     ground.name = 'ground';
     this.scene.add(ground);
 
-    // Soft mowing stripes and a clean arcade-style build yard.
-    for (let i = 0; i < 22; i++) {
-      const x = -86 + i * 8;
-      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 126), i % 2 ? shared.grassDark : shared.grassLight);
+    // Broad grass panels and subtle mowing lines make the airfield read as a
+    // real regional site rather than a small floating diorama.
+    for (let i = 0; i < 34; i++) {
+      const x = -132 + i * 8;
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 188), i % 2 ? shared.grassDark : shared.grassLight);
       stripe.rotation.x = -Math.PI / 2;
-      stripe.position.set(x, .015, 5);
+      stripe.position.set(x, .012, 14);
       stripe.receiveShadow = true;
       this.scene.add(stripe);
     }
-    const yard = new THREE.Mesh(new THREE.PlaneGeometry(112, 17), material('#8bd36a'));
+
+    // Expanded construction and service campus behind the passenger terminal.
+    const yard = new THREE.Mesh(new THREE.PlaneGeometry(184, 78), material('#86ca65'));
     yard.rotation.x = -Math.PI / 2;
-    yard.position.set(0, .015, 38.4);
+    yard.position.set(0, .016, 72);
     yard.receiveShadow = true;
     this.scene.add(yard);
-    for (let x = -53; x <= 53; x += 10) {
-      const tile = new THREE.Mesh(new THREE.PlaneGeometry(.12, 16.6), material('#a8e187'));
-      tile.rotation.x = -Math.PI / 2; tile.position.set(x, .075, 38.4); this.scene.add(tile);
+    const yardLine = material('#a5df80');
+    for (let x = -90; x <= 90; x += 10) {
+      const tile = new THREE.Mesh(new THREE.PlaneGeometry(.12, 76), yardLine);
+      tile.rotation.x = -Math.PI / 2;
+      tile.position.set(x, .045, 72);
+      this.scene.add(tile);
     }
-    for (let z = 31; z <= 46; z += 5) {
-      const tile = new THREE.Mesh(new THREE.PlaneGeometry(110, .12), material('#a8e187'));
-      tile.rotation.x = -Math.PI / 2; tile.position.set(0, .075, z); this.scene.add(tile);
+    for (let z = 35; z <= 109; z += 8) {
+      const tile = new THREE.Mesh(new THREE.PlaneGeometry(182, .12), yardLine);
+      tile.rotation.x = -Math.PI / 2;
+      tile.position.set(0, .045, z);
+      this.scene.add(tile);
     }
 
-    // Airport perimeter fence and entry road are grounded on the same terrain plane.
-    for (let x = -100; x <= 100; x += 5) {
-      cylinder(this.scene, .055, .055, 1.25, material('#e4eee9'), x, .625, 55, 6);
+    // Wide, marked airport service road at the far edge of the build zone.
+    const serviceRoad = material('#39444e', .94);
+    const roadMark = material('#f5e8b8', .8);
+    box(this.scene, 194, .2, 7.8, serviceRoad, 0, .025, 114, false);
+    box(this.scene, 194, .12, 1.5, material('#b5beb8'), 0, .09, 119, false);
+    for (let x = -90; x <= 90; x += 12) {
+      box(this.scene, 4.5, .025, .14, roadMark, x, .14, 114, false);
     }
-    box(this.scene, 205, .12, .12, material('#d8e7dd'), 0, .68, 55, false);
-    box(this.scene, 205, .12, .12, material('#d8e7dd'), 0, .68, -52, false);
+
+    // Four-sided airport perimeter fence, with enough space for the enlarged
+    // service campus and the future apron-side expansion.
+    const fence = material('#dce7e1');
+    for (let x = -158; x <= 158; x += 5) {
+      cylinder(this.scene, .055, .055, 1.25, fence, x, .625, -55, 6);
+      cylinder(this.scene, .055, .055, 1.25, fence, x, .625, 121, 6);
+    }
+    for (let z = -55; z <= 121; z += 5) {
+      cylinder(this.scene, .055, .055, 1.25, fence, -158, .625, z, 6);
+      cylinder(this.scene, .055, .055, 1.25, fence, 158, .625, z, 6);
+    }
+    box(this.scene, 319, .12, .12, fence, 0, .68, -55, false);
+    box(this.scene, 319, .12, .12, fence, 0, .68, 121, false);
+    box(this.scene, .12, .12, 176, fence, -158, .68, 33, false);
+    box(this.scene, .12, .12, 176, fence, 158, .68, 33, false);
   }
 
   createAirfield() {
@@ -391,9 +419,9 @@ export class AirportWorld {
       box(this.scene, .16, .1, 17, material('#e8f1df'), x, .06, 38.3, false);
     }
     // Hangar silhouettes beyond the fence, plus a tree line kept outside construction areas.
-    for (let i = 0; i < 38; i++) {
-      const x = -86 + (i * 47 % 172);
-      const z = i % 2 ? 59 + (i % 4) * 2 : -57 - (i % 3) * 2;
+    for (let i = 0; i < 46; i++) {
+      const x = -148 + (i * 59 % 296);
+      const z = i % 2 ? 130 + (i % 4) * 2 : -76 - (i % 3) * 2;
       this.addTree(x, z, .72 + (i % 3) * .15);
     }
     // Windsock, maintenance shed and airport fire vehicles as environmental props.
@@ -413,45 +441,51 @@ export class AirportWorld {
     const road = material('#39434c', .94);
     const sidewalk = material('#aab5ad', .95);
     const lane = material('#f4e8bb', .8);
-    box(this.scene, 198, .18, 7.6, road, 0, .02, -63, false);
-    box(this.scene, 198, .18, 7.6, road, 0, .02, 75, false);
-    box(this.scene, 7.6, .18, 138, road, -98, .02, 6, false);
-    box(this.scene, 7.6, .18, 138, road, 98, .02, 6, false);
-    box(this.scene, 198, .12, 2.0, sidewalk, 0, .08, -69, false);
-    box(this.scene, 198, .12, 2.0, sidewalk, 0, .08, 81, false);
-    box(this.scene, 2.0, .12, 138, sidewalk, -104, .08, 6, false);
-    box(this.scene, 2.0, .12, 138, sidewalk, 104, .08, 6, false);
-    for (let x = -91; x <= 91; x += 12) {
-      box(this.scene, 4.2, .025, .12, lane, x, .125, -63, false);
-      box(this.scene, 4.2, .025, .12, lane, x, .125, 75, false);
+
+    // Outer ring road and connected local streets now surround the full site.
+    box(this.scene, 302, .18, 8.2, road, 0, .02, -95, false);
+    box(this.scene, 302, .18, 8.2, road, 0, .02, 146, false);
+    box(this.scene, 8.2, .18, 241, road, -151, .02, 25.5, false);
+    box(this.scene, 8.2, .18, 241, road, 151, .02, 25.5, false);
+    box(this.scene, 302, .12, 2.0, sidewalk, 0, .08, -101, false);
+    box(this.scene, 302, .12, 2.0, sidewalk, 0, .08, 152, false);
+    box(this.scene, 2.0, .12, 241, sidewalk, -158, .08, 25.5, false);
+    box(this.scene, 2.0, .12, 241, sidewalk, 158, .08, 25.5, false);
+
+    for (let x = -140; x <= 140; x += 12) {
+      box(this.scene, 4.2, .025, .12, lane, x, .125, -95, false);
+      box(this.scene, 4.2, .025, .12, lane, x, .125, 146, false);
     }
-    for (let z = -54; z <= 66; z += 12) {
-      box(this.scene, .12, .025, 4.2, lane, -98, .125, z, false);
-      box(this.scene, .12, .025, 4.2, lane, 98, .125, z, false);
+    for (let z = -83; z <= 134; z += 12) {
+      box(this.scene, .12, .025, 4.2, lane, -151, .125, z, false);
+      box(this.scene, .12, .025, 4.2, lane, 151, .125, z, false);
     }
+
+    // Two rows of homes and neighbourhood shops beyond the airport fence.
     for (let i = 0; i < 8; i++) {
-      const x = -84 + i * 24;
-      if (i === 1 || i === 6) this.addDistrictShop(x, -80, i);
-      else this.addDistrictHouse(x, -80, i);
-      this.addDistrictHouse(x, 91, i + 8);
+      const x = -130 + i * 37.1;
+      if (i === 1 || i === 6) this.addDistrictShop(x, -121, i);
+      else this.addDistrictHouse(x, -121, i);
+      this.addDistrictHouse(x, 171, i + 8);
     }
-    for (const x of [-78, -42, 42, 78]) {
-      this.addTree(x, -70, .8);
-      this.addTree(x, 82, .82);
+    for (const x of [-132, -88, -44, 44, 88, 132]) {
+      this.addTree(x, -109, .82);
+      this.addTree(x, 158, .86);
     }
 
     this.trafficPath = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-96, .12, -63), new THREE.Vector3(-74, .12, -63),
-      new THREE.Vector3(0, .12, -63), new THREE.Vector3(74, .12, -63),
-      new THREE.Vector3(96, .12, -63), new THREE.Vector3(98, .12, -42),
-      new THREE.Vector3(98, .12, 25), new THREE.Vector3(96, .12, 75),
-      new THREE.Vector3(74, .12, 75), new THREE.Vector3(0, .12, 75),
-      new THREE.Vector3(-74, .12, 75), new THREE.Vector3(-96, .12, 75),
-      new THREE.Vector3(-98, .12, 48), new THREE.Vector3(-98, .12, -35)
+      new THREE.Vector3(-148, .12, -95), new THREE.Vector3(-74, .12, -95),
+      new THREE.Vector3(0, .12, -95), new THREE.Vector3(74, .12, -95),
+      new THREE.Vector3(148, .12, -95), new THREE.Vector3(151, .12, -62),
+      new THREE.Vector3(151, .12, 28), new THREE.Vector3(151, .12, 111),
+      new THREE.Vector3(148, .12, 146), new THREE.Vector3(74, .12, 146),
+      new THREE.Vector3(0, .12, 146), new THREE.Vector3(-74, .12, 146),
+      new THREE.Vector3(-148, .12, 146), new THREE.Vector3(-151, .12, 111),
+      new THREE.Vector3(-151, .12, 28), new THREE.Vector3(-151, .12, -62)
     ], true, 'centripetal');
 
     const carPaints = ['#e85d5d', '#e8edf0', '#307fbd', '#e4a04e', '#41586d', '#5b9b70', '#c9cbd0'];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 14; i++) {
       const car = new THREE.Group();
       const paint = material(carPaints[i % carPaints.length], .48, .05);
       box(car, 1.35, .62, 2.8, paint, 0, .53, 0);
@@ -466,10 +500,90 @@ export class AirportWorld {
         cylinder(car, .11, .11, .15, shared.silver, wx, .28, wz, 10, [0, 0, Math.PI / 2]);
       }
       this.scene.add(car);
-      this.trafficCars.push({ mesh: car, progress: i / 10, speed: .014 + (i % 3) * .0012 });
+      this.trafficCars.push({ mesh: car, progress: i / 14, speed: .011 + (i % 4) * .0011 });
     }
   }
 
+
+  createRegionalLandscape() {
+    // Retention pond and small green belt at the edge of the airfield.
+    const waterMaterial = new THREE.MeshStandardMaterial({ color: '#72adbd', roughness: .3, metalness: .08 });
+    const pond = new THREE.Mesh(new THREE.CircleGeometry(14, 40), waterMaterial);
+    pond.rotation.x = -Math.PI / 2;
+    pond.position.set(-119, .035, 34);
+    pond.scale.set(1.45, .82, 1);
+    pond.receiveShadow = true;
+    this.scene.add(pond);
+    const bank = new THREE.Mesh(new THREE.TorusGeometry(17, .8, 7, 48), material('#8aab68'));
+    bank.rotation.x = Math.PI / 2;
+    bank.position.set(-119, .04, 34);
+    bank.scale.set(1.2, .78, 1);
+    this.scene.add(bank);
+
+    // Logistics and maintenance estate: several large halls, loading bays,
+    // roof equipment and marked truck courts.
+    for (let i = 0; i < 4; i++) {
+      const x = 112 + (i % 2) * 22;
+      const z = -30 + Math.floor(i / 2) * 39;
+      const hall = new THREE.Group();
+      hall.position.set(x, 0, z);
+      this.scene.add(hall);
+      const wall = material(i % 2 ? '#c9d3d6' : '#d9e0df');
+      const roof = material(i % 2 ? '#647481' : '#788993');
+      box(hall, 18, .25, 15, material('#89959a'), 0, .13, 0, false);
+      box(hall, 15.5, 7.2, 12.5, wall, 0, 3.75, 0);
+      box(hall, 16, .65, 13, roof, 0, 7.55, 0);
+      for (let door = -1; door <= 1; door++) {
+        box(hall, 3.3, 3.5, .18, material('#344b5b'), door * 4.5, 1.9, -6.34, false);
+        box(hall, 2.8, .12, .2, shared.orange, door * 4.5, 3.75, -6.42, false);
+      }
+      for (const ventX of [-5, 0, 5]) {
+        box(hall, 1.1, .55, 1.0, material('#53636d'), ventX, 8.0, 1.5, false);
+      }
+      const label = makeTextLabel(i % 2 ? 'CARGO LOGISTICS' : 'AIRPORT SERVICES', '#ffffff', [8.5, 1.2, 1]);
+      label.position.set(0, 5.4, -6.48);
+      hall.add(label);
+
+      for (let t = -1; t <= 1; t++) {
+        const truck = new THREE.Group();
+        truck.position.set(-5.2 + t * 5.2, .15, 10.2);
+        hall.add(truck);
+        box(truck, 2.0, .95, 3.4, material('#e6e9e7'), 0, .75, 0);
+        box(truck, 1.85, .9, 1.15, shared.blue, 0, 1.4, .75);
+        for (const wx of [-.82, .82]) for (const wz of [-1.05, 1.05]) {
+          cylinder(truck, .3, .3, .18, shared.rubber, wx, .32, wz, 12, [0, 0, Math.PI / 2]);
+        }
+      }
+    }
+
+    // Apron-side floodlights and road lighting improve night-time scale.
+    for (let x = -84; x <= 84; x += 24) {
+      const pole = new THREE.Group();
+      pole.position.set(x, 0, 109);
+      this.scene.add(pole);
+      cylinder(pole, .12, .17, 7.2, shared.silver, 0, 3.6, 0, 10);
+      box(pole, 2.4, .22, .55, material('#dce7e7', .4, .2), 0, 7.15, 0, false);
+      sphere(pole, .2, new THREE.MeshStandardMaterial({ color: '#fff1b5', emissive: '#ffe7a0', emissiveIntensity: .4 }), 0, 7.0, 0);
+    }
+
+    // Tree belts and two distant wind turbines establish a much wider horizon.
+    for (let i = 0; i < 34; i++) {
+      const x = -146 + (i * 31 % 292);
+      const z = i % 2 ? -145 + (i % 5) * 3 : 184 - (i % 4) * 3;
+      this.addTree(x, z, .72 + (i % 4) * .1);
+    }
+    for (const x of [-92, 82]) {
+      const turbine = new THREE.Group();
+      turbine.position.set(x, 0, -139);
+      this.scene.add(turbine);
+      cylinder(turbine, .28, .42, 20, material('#e6ece8'), 0, 10, 0, 10);
+      sphere(turbine, .75, material('#f5f6f1'), 0, 20, 0);
+      for (let blade = 0; blade < 3; blade++) {
+        const arm = box(turbine, .55, 8.2, .22, material('#f3f5f0'), 0, 24.1, 0, false);
+        arm.rotation.z = blade * Math.PI * 2 / 3;
+      }
+    }
+  }
 
   addDistrictShop(x, z, variant = 0) {
     const shop = new THREE.Group();
@@ -899,7 +1013,7 @@ export class AirportWorld {
   resize() {
     const w = Math.max(1, this.container.clientWidth), h = Math.max(1, this.container.clientHeight);
     const aspect = w / h;
-    const viewHeight = 90;
+    const viewHeight = 108;
     this.camera.left = -viewHeight * aspect / 2;
     this.camera.right = viewHeight * aspect / 2;
     this.camera.top = viewHeight / 2;
@@ -961,9 +1075,9 @@ export class AirportWorld {
   }
 
   focusAirport() {
-    this.controls.target.set(0, 0, 13);
-    this.camera.position.set(70, 83, 72);
-    this.camera.zoom = 1.06;
+    this.controls.target.set(0, 0, 36);
+    this.camera.position.set(83, 105, 105);
+    this.camera.zoom = .88;
     this.camera.updateProjectionMatrix();
     this.controls.update();
   }
