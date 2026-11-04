@@ -1,5 +1,6 @@
 import { addMoney, applyHourlyCashFlow, settleFlight } from './economy.js';
 import { CONTRACT_DEFS } from '../data.js';
+import { getActiveFlights, getAvailableGate, reserveRunway, releaseRunway, reserveTaxiway, releaseTaxiway, syncPrimaryFlight } from './air-traffic.js';
 
 const v = (x, y, z) => ({ x, y, z });
 const START_GATE = { x: 8, z: 8.5, id: 'initial-gate' };
@@ -56,37 +57,54 @@ function notify(state, title, message, type = 'info') {
   state.notifications.unshift({ id: `${Date.now()}-${Math.random()}`, title, message, type, time: state.gameMinutes });
   state.notifications = state.notifications.slice(0, 6);
 }
-function startFlight(state) {
-  const availableGates = [START_GATE, ...state.buildings.filter(b => b.type === 'gate')];
-  const gate = availableGates[state.flightsCompleted % availableGates.length];
+function enterHolding(state, flight) {
+  const otherHolding = getActiveFlights(state).filter(item => item.id !== flight.id && item.phase === 'holding');
+  const lane = otherHolding.length;
+  flight.phase = 'holding'; flight.timer = 0; flight.holdOffset = lane * 5.5;
+  flight.holdPhase = (lane * 1.7 + (Number(flight.id.slice(2)) || 0) * .23) % (Math.PI * 2);
+  flight.route = []; flight.routeIndex = 0; flight.segmentDistance = 0;
+  flight.position = { x: -47 - lane * .8, y: 9 + lane * .35, z: -29 - lane * 5.5 };
+  flight.yaw = Math.PI / 2;
+}
+function routeToFinal(flight) {
+  setRoute(flight, [v(-66, 12, -16), v(-52, 7, -16), v(-39, 3.1, -16), v(-28, 1.19, -16)], 4.0);
+}
+export function scheduleArrival(state) {
+  const flights = getActiveFlights(state);
+  const gate = getAvailableGate(state);
+  if (!gate) { state.nextFlightAt = state.gameMinutes + 5; return null; }
+  const sequence = Math.max(state.flightSequence || 0, (state.flightsCompleted || 0) + flights.length) + 1;
+  state.flightSequence = sequence;
   const models = [
     { model: 'ATR 72-600', passengers: 68, kind: 'regional' },
     { model: 'Dash 8 Q400', passengers: 74, kind: 'regional' },
     { model: 'Airbus A320neo', passengers: 150, kind: 'jet' },
     { model: 'Boeing 737-800', passengers: 164, kind: 'jet' },
     { model: 'Boeing 737-800F', passengers: 0, cargoTons: 22, kind: 'cargo' },
-    { model: 'Airbus A330F', passengers: 0, cargoTons: 44, kind: 'cargo' },
+    { model: 'Airbus A330F', passengers: 0, cargoTons: 44, kind: 'cargo' }
   ];
-  const aircraft = models[state.flightsCompleted % models.length];
-  const f = {
-    id: `AT${String(state.flightsCompleted + 1).padStart(3, '0')}`,
-    airline: aircraft.kind === 'cargo'
-      ? ['CargoLink', 'Northstar Freight'][state.flightsCompleted % 2]
-      : ['SkyWays', 'Northstar Air', 'CloudJet', 'BluePeak'][state.flightsCompleted % 4],
-    model: aircraft.model,
-    kind: aircraft.kind,
-    passengers: aircraft.kind === 'cargo' ? 0 : Math.min(aircraft.passengers, 58 + (state.flightsCompleted * 7 % Math.max(1, aircraft.passengers - 57))),
-    cargoTons: aircraft.cargoTons || 0,
-    destination: ['Amsterdam', 'Copenhagen', 'London', 'Hamburg', 'Paris', 'Brussels'][state.flightsCompleted % 6],
-    gateId: gate.id,
-    phase: 'approach',
-    timer: 0,
-    position: v(-66, 12, -16),
-    yaw: Math.PI / 2,
+  const model = models[(sequence - 1) % models.length];
+  const destinations = ['Amsterdam', 'Copenhagen', 'London', 'Hamburg', 'Paris', 'Brussels', 'Frankfurt', 'Zurich', 'Madrid', 'Vienna', 'Oslo', 'Prague'];
+  const passengerAirlines = ['SkyWays', 'Northstar Air', 'CloudJet', 'BluePeak', 'EuroConnect'];
+  const cargoAirlines = ['CargoLink', 'Northstar Freight', 'AeroCargo'];
+  const flight = {
+    id: 'AT' + String(sequence).padStart(3, '0'),
+    airline: model.kind === 'cargo' ? cargoAirlines[(sequence - 1) % cargoAirlines.length] : passengerAirlines[(sequence - 1) % passengerAirlines.length],
+    model: model.model, kind: model.kind,
+    passengers: model.kind === 'cargo' ? 0 : Math.min(model.passengers, 58 + ((sequence - 1) * 7 % Math.max(1, model.passengers - 57))),
+    cargoTons: model.cargoTons || 0, destination: destinations[(sequence - 1) % destinations.length],
+    gateId: gate.id, phase: 'approach', timer: 0, scheduledAt: state.gameMinutes,
+    position: v(-66, 12, -16), yaw: Math.PI / 2
   };
-  setRoute(f, [v(-66, 12, -16), v(-52, 7, -16), v(-39, 3.1, -16), v(-28, 1.19, -16)], 4.0);
-  state.activeFlight = f;
-  notify(state, 'Aircraft on final', `${f.airline} ${f.id} is descending for runway 09.`, 'flight');
+  const inboundAlreadyActive = Boolean(state.runwayFlightId) ||
+    flights.some(item => ['approach', 'landing-rollout', 'runway-exit-wait'].includes(item.phase));
+  if (inboundAlreadyActive) enterHolding(state, flight); else routeToFinal(flight);
+  flights.push(flight);
+  syncPrimaryFlight(state);
+  state.nextFlightAt = state.gameMinutes + (state.research.includes('digital-slots') ? 14 : 18);
+  notify(state, flight.phase === 'holding' ? 'Aircraft in arrival queue' : 'Aircraft on final',
+    flight.airline + ' ' + flight.id + ' (' + flight.model + ') is scheduled for ' + flight.destination + '.', 'flight');
+  return flight;
 }
 export function progressContracts(state, flight) {
   const active = Array.isArray(state.activeContracts) ? state.activeContracts : [];
@@ -168,19 +186,105 @@ export function resolveIncident(state, hasQualifiedTeam = false) {
   return { ok: true, cost };
 }
 
-function finishFlight(state) {
-  const f = state.activeFlight;
-  const result = settleFlight(state, f.passengers, f.cargoTons || 0);
-  state.cargoTonsHandled = (state.cargoTonsHandled || 0) + (f.cargoTons || 0);
+function finishFlight(state, flight) {
+  const result = settleFlight(state, flight.passengers, flight.cargoTons || 0);
+  state.cargoTonsHandled = (state.cargoTonsHandled || 0) + (flight.cargoTons || 0);
   state.stats.peakPassengers = Math.max(state.stats.peakPassengers, state.passengers);
   state.reputation = Math.min(100, state.reputation + (state.satisfaction > 75 ? .45 : -.2));
-  state.flightHistory.unshift({ id: f.id, airline: f.airline, model: f.model, passengers: f.passengers, cargoTons: f.cargoTons || 0, kind: f.kind || 'regional', destination: f.destination || 'Regional network', net: result.net, time: state.gameMinutes, status: 'Departed' });
-  progressContracts(state, f);
+  state.flightHistory.unshift({
+    id: flight.id, airline: flight.airline, model: flight.model, passengers: flight.passengers,
+    cargoTons: flight.cargoTons || 0, kind: flight.kind || 'regional',
+    destination: flight.destination || 'Regional network', net: result.net, time: state.gameMinutes, status: 'Departed'
+  });
+  progressContracts(state, flight);
   state.flightHistory = state.flightHistory.slice(0, 20);
-  const operation = f.cargoTons ? `${f.cargoTons} tonnes of cargo delivered` : `${f.passengers} passengers served`;
-  notify(state, 'Flight departed', `${f.id} took off successfully. ${operation}. Net contribution: €${Math.round(result.net).toLocaleString('en-GB')}.`, 'success');
-  state.activeFlight = null;
-  state.nextFlightAt = state.gameMinutes + (state.research.includes('digital-slots') ? 14 : 18);
+  const operation = flight.cargoTons ? flight.cargoTons + ' tonnes of cargo delivered' : flight.passengers + ' passengers served';
+  notify(state, 'Flight departed', flight.id + ' took off for ' + flight.destination + '. ' + operation + '. Net contribution: €' + Math.round(result.net).toLocaleString('en-GB') + '.', 'success');
+  releaseRunway(state, flight); releaseTaxiway(state, flight);
+  state.activeFlights = getActiveFlights(state).filter(item => item.id !== flight.id);
+  syncPrimaryFlight(state);
+  state.lastCompletedFlightAt = state.gameMinutes;
+}
+function updateHoldingPattern(flight, gameDelta) {
+  flight.holdPhase = (flight.holdPhase || 0) + gameDelta * .24;
+  const angle = flight.holdPhase, lane = flight.holdOffset || 0;
+  flight.position = { x: -47 + Math.cos(angle) * 7, y: 9 + lane * .28 + Math.sin(angle * 2) * .38, z: -29 - lane + Math.sin(angle) * 4 };
+  flight.yaw = Math.atan2(-Math.sin(angle) * 4, -Math.sin(angle) * 7);
+}
+function updateFlightOperations(state, gameDelta) {
+  const flights = getActiveFlights(state);
+  const inboundActive = flights.some(flight => ['approach', 'landing-rollout', 'runway-exit-wait'].includes(flight.phase));
+  if (!state.runwayFlightId && !inboundActive) {
+    const nextArrival = flights.filter(flight => flight.phase === 'holding').sort((a, b) => (a.scheduledAt || 0) - (b.scheduledAt || 0))[0];
+    if (nextArrival) {
+      routeToFinal(nextArrival);
+      changePhase(state, nextArrival, 'approach', { title: 'Arrival cleared', message: nextArrival.id + ' is leaving the holding pattern for final approach.', type: 'flight' });
+    }
+  }
+  for (const flight of [...flights]) {
+    flight.timer += gameDelta;
+    if (flight.phase === 'holding') { updateHoldingPattern(flight, gameDelta); continue; }
+    if (flight.phase === 'approach') {
+      if (advanceRoute(flight, gameDelta)) {
+        if (reserveRunway(state, flight)) {
+          state.stats.landings++;
+          state.runwayCondition = Math.max(40, (state.runwayCondition ?? 100) - .22);
+          setRoute(flight, [v(-28, 1.19, -16), v(-16, 1.19, -16), v(0, 1.19, -16), v(22, 1.19, -16)], 5.8);
+          changePhase(state, flight, 'landing-rollout', { title: 'Touchdown!', message: flight.airline + ' ' + flight.id + ' has landed on runway 09.', type: 'success' });
+        } else enterHolding(state, flight);
+      }
+      continue;
+    }
+    if (flight.phase === 'landing-rollout') {
+      if (advanceRoute(flight, gameDelta)) {
+        if (reserveTaxiway(state, flight)) {
+          setRoute(flight, routeForGate(getGate(state, flight.gateId)), 2.7);
+          releaseRunway(state, flight);
+          changePhase(state, flight, 'taxi-in', { title: 'Runway vacated', message: flight.id + ' is taxiing to its assigned gate.', type: 'flight' });
+        } else changePhase(state, flight, 'runway-exit-wait', { title: 'Runway exit queue', message: flight.id + ' is waiting for a clear taxiway exit.', type: 'warning' });
+      }
+      continue;
+    }
+    if (flight.phase === 'runway-exit-wait') {
+      if (reserveTaxiway(state, flight)) {
+        setRoute(flight, routeForGate(getGate(state, flight.gateId)), 2.7);
+        releaseRunway(state, flight); changePhase(state, flight, 'taxi-in', null);
+      }
+      continue;
+    }
+    if (flight.phase === 'taxi-in') {
+      if (advanceRoute(flight, gameDelta)) {
+        releaseTaxiway(state, flight);
+        state.passengers = Math.min(999, state.passengers + Math.floor(flight.passengers * .65));
+        changePhase(state, flight, 'parked', { title: 'At the gate', message: flight.id + ' is parked. Passenger and ground services are starting.', type: 'success' });
+      }
+      continue;
+    }
+    if (flight.phase === 'parked') {
+      if (flight.timer >= (state.research.includes('fast-handling') ? 12 : 17) && reserveTaxiway(state, flight)) {
+        state.passengers = Math.max(0, state.passengers - Math.floor(flight.passengers * .55));
+        setRoute(flight, routeForGate(getGate(state, flight.gateId)).reverse(), 2.6);
+        changePhase(state, flight, 'taxi-out', { title: 'Boarding complete', message: flight.id + ' has completed turnaround and is taxiing for departure.', type: 'info' });
+      }
+      continue;
+    }
+    if (flight.phase === 'taxi-out') {
+      if (advanceRoute(flight, gameDelta)) {
+        releaseTaxiway(state, flight);
+        changePhase(state, flight, 'departure-queue', { title: 'Ready for departure', message: flight.id + ' is holding short while the runway is checked.', type: 'flight' });
+      }
+      continue;
+    }
+    if (flight.phase === 'departure-queue') {
+      if (reserveRunway(state, flight)) {
+        setRoute(flight, [v(22, 1.19, -16), v(32, 2.6, -16), v(44, 6.0, -16), v(62, 11.5, -16)], 5.5);
+        changePhase(state, flight, 'takeoff', { title: 'Take-off clearance', message: flight.id + ' has entered the runway for departure.', type: 'flight' });
+      }
+      continue;
+    }
+    if (flight.phase === 'takeoff' && advanceRoute(flight, gameDelta)) finishFlight(state, flight);
+  }
+  syncPrimaryFlight(state);
 }
 function changePhase(state, flight, phase, message) {
   flight.phase = phase;
@@ -206,45 +310,8 @@ export function tickGame(state, realDelta) {
     state.satisfaction = Math.max(45, state.satisfaction - gameDelta * (state.buildings.some(b => b.type === 'fire') ? .003 : .006));
   }
 
-  if (state.activeFlight) {
-    const f = state.activeFlight;
-    f.timer += gameDelta;
-    if (f.phase === 'approach') {
-      if (advanceRoute(f, gameDelta)) {
-        state.stats.landings++;
-        state.runwayCondition = Math.max(40, (state.runwayCondition ?? 100) - .22);
-        setRoute(f, [v(-28, 1.19, -16), v(-16, 1.19, -16), v(0, 1.19, -16), v(22, 1.19, -16)], 5.8);
-        changePhase(state, f, 'landing-rollout', { title: 'Touchdown!', message: `${f.airline} ${f.id} has landed on runway 09.`, type: 'success' });
-      }
-    } else if (f.phase === 'landing-rollout') {
-      if (advanceRoute(f, gameDelta)) {
-        const gate = getGate(state, f.gateId);
-        setRoute(f, routeForGate(gate), 2.7);
-        changePhase(state, f, 'taxi-in', { title: 'Runway vacated', message: `${f.id} is taxiing to its assigned gate.`, type: 'flight' });
-      }
-    } else if (f.phase === 'taxi-in') {
-      if (advanceRoute(f, gameDelta)) {
-        state.passengers = Math.min(999, state.passengers + Math.floor(f.passengers * .65));
-        changePhase(state, f, 'parked', { title: 'At the gate', message: `${f.id} is parked. Passengers are disembarking and the aircraft is being serviced.`, type: 'success' });
-      }
-    } else if (f.phase === 'parked') {
-      if (f.timer >= (state.research.includes('fast-handling') ? 12 : 17)) {
-        state.passengers = Math.max(0, state.passengers - Math.floor(f.passengers * .55));
-        const gate = getGate(state, f.gateId);
-        setRoute(f, routeForGate(gate).reverse(), 2.6);
-        changePhase(state, f, 'taxi-out', { title: 'Boarding complete', message: `${f.id} has completed turnaround and is taxiing for departure.`, type: 'info' });
-      }
-    } else if (f.phase === 'taxi-out') {
-      if (advanceRoute(f, gameDelta)) {
-        setRoute(f, [v(22, 1.19, -16), v(32, 2.6, -16), v(44, 6.0, -16), v(62, 11.5, -16)], 5.5);
-        changePhase(state, f, 'takeoff', { title: 'Take-off roll', message: `${f.id} is accelerating for departure.`, type: 'flight' });
-      }
-    } else if (f.phase === 'takeoff') {
-      if (advanceRoute(f, gameDelta)) finishFlight(state);
-    }
-  } else if (state.gameMinutes >= state.nextFlightAt) {
-    startFlight(state);
-  }
+  updateFlightOperations(state, gameDelta);
+  if (state.gameMinutes >= state.nextFlightAt) scheduleArrival(state);
 
   if (!state._weatherAt) state._weatherAt = state.gameMinutes + 150;
   if (state.gameMinutes >= state._weatherAt) {
@@ -270,10 +337,13 @@ export function getGateCount(state) {
 export function flightPhaseLabel(phase) {
   return ({
     approach: 'Final approach',
+    holding: 'Holding pattern',
     'landing-rollout': 'Landing roll',
+    'runway-exit-wait': 'Waiting for taxiway',
     'taxi-in': 'Taxiing to gate',
     parked: 'At gate · turnaround',
     'taxi-out': 'Taxiing to runway',
+    'departure-queue': 'Holding short',
     takeoff: 'Taking off',
   })[phase] || 'Scheduled';
 }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - release/airport-tycoon-1-1-expanded-world-economy
+      - release/airport-tycoon-1-2-air-traffic-foundation
 
 permissions:
   contents: read

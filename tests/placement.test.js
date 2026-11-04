@@ -158,3 +158,58 @@ test('airline contracts progress and pay out on a matching flight', () => {
   assert.equal(state.contractsCompleted, 1);
   assert.ok(state.money >= 87500);
 });
+
+import { getActiveFlights, getAvailableGate, getTrafficSnapshot, reserveRunway, releaseRunway, reserveTaxiway, releaseTaxiway } from '../src/engine/air-traffic.js';
+import { scheduleArrival } from '../src/engine/simulation.js';
+
+test('assigns simultaneous arrivals to separate aircraft gates', () => {
+  const state = INITIAL_STATE();
+  state.buildings.push({ id: 'gate-west', type: 'gate', x: -16, z: 8.5 });
+  const first = scheduleArrival(state);
+  const second = scheduleArrival(state);
+  assert.ok(first);
+  assert.ok(second);
+  assert.notEqual(first.gateId, second.gateId);
+  assert.equal(first.phase, 'approach');
+  assert.equal(second.phase, 'holding');
+  assert.equal(getActiveFlights(state).length, 2);
+  assert.equal(state.activeFlight.id, first.id);
+});
+
+test('does not assign a gate that is already reserved by another aircraft', () => {
+  const state = INITIAL_STATE();
+  const firstGate = getAvailableGate(state);
+  state.activeFlights = [{ id: 'AT001', gateId: firstGate.id, phase: 'parked' }];
+  assert.equal(getAvailableGate(state), null);
+  const traffic = getTrafficSnapshot(state);
+  assert.equal(traffic.activeAircraft, 1);
+  assert.equal(traffic.occupiedGates, 1);
+  assert.equal(traffic.freeGates, 0);
+});
+
+test('runway and taxiway reservations are exclusive and can be released', () => {
+  const state = INITIAL_STATE();
+  const first = { id: 'AT001' }, second = { id: 'AT002' };
+  assert.equal(reserveRunway(state, first), true);
+  assert.equal(reserveRunway(state, second), false);
+  assert.equal(releaseRunway(state, second), false);
+  assert.equal(releaseRunway(state, first), true);
+  assert.equal(reserveTaxiway(state, first), true);
+  assert.equal(reserveTaxiway(state, second), false);
+  assert.equal(releaseTaxiway(state, first), true);
+});
+
+test('traffic snapshot separates arrivals, holding, taxiing and parked aircraft', () => {
+  const state = INITIAL_STATE();
+  state.buildings.push({ id: 'gate-west', type: 'gate', x: -16, z: 8.5 });
+  state.activeFlights = [
+    { id: 'AT001', gateId: 'initial-gate', phase: 'approach' },
+    { id: 'AT002', gateId: 'gate-west', phase: 'holding' }
+  ];
+  const traffic = getTrafficSnapshot(state);
+  assert.equal(traffic.activeAircraft, 2);
+  assert.equal(traffic.arrivals, 2);
+  assert.equal(traffic.holding, 1);
+  assert.equal(traffic.occupiedGates, 2);
+  assert.equal(traffic.freeGates, 0);
+});

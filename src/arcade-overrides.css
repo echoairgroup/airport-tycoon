@@ -141,3 +141,40 @@
 .event-item small { font-size: 8.5px; }
 .progress-label { font-size: 8px; }
 .toast { font-size: 10px; }
+
+
+/* Airport Tycoon 1.2 — multi-aircraft traffic board */
+.traffic-counts {
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; margin:12px 0 18px;
+}
+.traffic-counts > div {
+  min-width:0; padding:10px 8px; border-radius:11px;
+  background:rgba(255,255,255,.06); border:1px solid rgba(225,244,255,.09);
+}
+.traffic-counts small,.traffic-counts b { display:block; }
+.traffic-counts small { color:#9ebaca; font-size:7px; font-weight:800; letter-spacing:.09em; }
+.traffic-counts b { margin-top:4px; color:#f5fbff; font-size:18px; }
+.traffic-row {
+  display:flex; align-items:center; gap:10px; min-width:0; margin:8px 0; padding:11px;
+  border-radius:12px; background:rgba(255,255,255,.055);
+  border:1px solid rgba(228,246,255,.1);
+}
+.traffic-aircraft-icon {
+  flex:0 0 34px; width:34px; height:34px; display:grid; place-items:center;
+  border-radius:10px; background:rgba(83,185,233,.15); color:#8cdef8; font-size:18px;
+}
+.traffic-main { min-width:0; flex:1; }
+.traffic-main strong,.traffic-main small,.traffic-topline { display:block; }
+.traffic-topline { display:flex; justify-content:space-between; align-items:center; gap:7px; }
+.traffic-topline b { color:#f1f7fb; font-size:9px; }
+.traffic-kind { color:#9fe4a0; font-size:7px; font-weight:800; letter-spacing:.08em; }
+.traffic-main strong { margin-top:3px; color:#fff; font-size:10px; }
+.traffic-main small,.traffic-status small { margin-top:3px; color:#9db3c0; font-size:7.5px; }
+.traffic-status { flex:0 0 auto; max-width:116px; text-align:right; }
+.traffic-status .status-pill { display:inline-block; max-width:116px; white-space:normal; font-size:7px; }
+.traffic-status small { display:block; }
+@media(max-width:480px) {
+  .traffic-counts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .traffic-row { gap:7px; padding:8px; }
+  .traffic-status { max-width:94px; }
+}

@@ -1,8 +1,13 @@
-# Airport Tycoon — Expanded World Update 1.1
+# Airport Tycoon — Multi-Aircraft Operations Update 1.2
 
-A browser-based 3D airport management game built with Three.js and Vite. Build an airport, operate passenger and cargo services, keep the runway reliable, grow your airline network and respond to operational incidents.
+A browser-based 3D airport management game built with Three.js and Vite. Build an expanding airport, operate passenger and cargo services, coordinate multiple aircraft, manage runway and taxiway capacity, grow your airline network and respond to operational incidents.
 
-## Final Release 1.0
+## Release history
+
+- **1.2** — Multi-aircraft operations foundation, exclusive runway/taxiway reservations and save format 4.
+- **1.1** — Expanded world and corrected recurring cash flow.
+
+## Airport world
 
 ### Airport world
 - Much larger continuous 3D region with an expanded construction campus (roughly 184 × 78 world units), a marked airport service road, perimeter fencing and room for future development.
@@ -53,8 +58,23 @@ Saves remain local to the browser. The 1.1 update keeps the existing version 1, 
 
 ## Scope notes
 
-This is a stable single-player browser release. One scheduled aircraft is actively routed through the airport at a time; parked aircraft provide apron traffic and visual life. The simulation is a tycoon model rather than a real-world air traffic control system. Full terminal interior navigation, true multi-aircraft ground pathfinding, multiplayer, sound design and cloud saves are not part of this release.
+This is a single-player browser release. The 1.2 traffic layer supports multiple active aircraft, holding patterns, separate gate reservations and exclusive runway/shared-taxiway use. It is still a tycoon simulation rather than a real-world ATC system. Full terminal interior navigation, parallel taxiway pathfinding, advanced baggage/security/boarding processes, multiplayer, sound design and cloud saves remain later development stages.
 
 ## GitHub Pages
 
 The HTML loads both stylesheets with relative paths and Vite generates the production CSS asset. GitHub Actions runs the gameplay and construction tests, builds the site, verifies the stylesheet and deploys the Pages artifact on pushes to `main`.
+
+
+## Update 1.2 — multi-aircraft operations foundation
+
+- The simulation stores multiple active visiting aircraft instead of a single active flight.
+- Each aircraft reserves one physical gate from arrival scheduling until it has departed. Gate capacity therefore controls how many visiting aircraft can be handled at the same time.
+- A second arrival can enter a visible holding pattern while another aircraft is using the approach or runway.
+- Runway and shared taxiway reservations are exclusive. Aircraft wait at the runway exit or departure holding point instead of being allowed to overlap on the same piece of pavement.
+- The 3D renderer maintains a separate aircraft model for every active flight and animates each aircraft's propellers and navigation lights independently.
+- The Flights and Aircraft panels show all active arrivals, holding aircraft, taxi movements, parked aircraft and departures.
+- Save format 4 migrates existing version 1–3 airports and retains the old single-flight save field for compatibility.
+
+### Traffic model boundaries
+
+This is the first operational traffic layer, not a certified air-traffic-control simulation. The airport currently models one shared taxiway reservation and one runway reservation at a time. Multiple arrivals can be visible and queued, and multiple aircraft can occupy separate gates, but parallel taxiway pathfinding, editable real airline timetables, ATC phraseology, live multiplayer, cloud saves and backend-hosted shared worlds are not included in this update. The next engineering stages are a node-based taxiway network, user-editable airline schedules, terminal passenger processes, detailed ground-service chains, then a backend for accounts, cloud saves and multiplayer synchronisation.

@@ -1,10 +1,10 @@
 import { getPlacementStatus } from './placement.js';
 
-const SAVE_KEY = 'airport-tycoon-save-v3';
-const LEGACY_SAVE_KEYS = ['airport-tycoon-save-v2', 'airport-tycoon-save-v1'];
+const SAVE_KEY = 'airport-tycoon-save-v4';
+const LEGACY_SAVE_KEYS = ['airport-tycoon-save-v3', 'airport-tycoon-save-v2', 'airport-tycoon-save-v1'];
 
 export function saveGame(state) {
-  const snapshot = { ...state, version: 3, speed: 1, lastSavedAt: Date.now(), lastRealTime: Date.now() };
+  const snapshot = { ...state, version: 4, speed: 1, lastSavedAt: Date.now(), lastRealTime: Date.now() };
   localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
   return snapshot.lastSavedAt;
 }
@@ -79,14 +79,33 @@ function migrateV3(parsed) {
   };
 }
 
+function migrateV4(parsed) {
+  const activeFlights = Array.isArray(parsed.activeFlights) ? parsed.activeFlights : (parsed.activeFlight ? [parsed.activeFlight] : []);
+  const activeIds = new Set(activeFlights.map(flight => flight.id));
+  let runwayFlightId = activeIds.has(parsed.runwayFlightId) ? parsed.runwayFlightId : null;
+  let taxiwayFlightId = activeIds.has(parsed.taxiwayFlightId) ? parsed.taxiwayFlightId : null;
+  if (!runwayFlightId) runwayFlightId = activeFlights.find(flight => ['landing-rollout','runway-exit-wait','takeoff'].includes(flight.phase))?.id || null;
+  if (!taxiwayFlightId) taxiwayFlightId = activeFlights.find(flight => ['taxi-in','taxi-out'].includes(flight.phase))?.id || null;
+  const highestFlightNumber = activeFlights.reduce((highest, flight) => {
+    const match = String(flight.id || '').match(/(\\d+)$/);
+    return Math.max(highest, match ? Number(match[1]) : 0);
+  }, 0);
+  return {
+    ...parsed, version: 4, activeFlights, activeFlight: activeFlights[0] || null,
+    flightSequence: Math.max(parsed.flightSequence || 0, parsed.flightsCompleted || 0, highestFlightNumber),
+    runwayFlightId, taxiwayFlightId
+  };
+}
+
 export function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY) || LEGACY_SAVE_KEYS.map(key => localStorage.getItem(key)).find(Boolean);
     if (!raw) return null;
     let parsed = JSON.parse(raw);
-    if (!parsed || ![1, 2, 3].includes(parsed.version) || typeof parsed.money !== 'number' || !Array.isArray(parsed.buildings)) return null;
+    if (!parsed || ![1, 2, 3, 4].includes(parsed.version) || typeof parsed.money !== 'number' || !Array.isArray(parsed.buildings)) return null;
     if (parsed.version === 1) parsed = migrateV1(parsed);
     parsed = migrateV3(parsed);
+    parsed = migrateV4(parsed);
     const elapsedHours = Math.max(0, Math.min(8, (Date.now() - (parsed.lastRealTime || Date.now())) / 3600000));
     if (elapsedHours > .01) {
       const staffCost = Object.values(parsed.staff || {}).reduce((a, b) => a + b, 0) * 32;
@@ -95,7 +114,7 @@ export function loadGame() {
       parsed.offlineEarnings = Math.floor(hourlyNet * elapsedHours * .35);
       parsed.money += parsed.offlineEarnings;
     }
-    parsed.version = 3;
+    parsed.version = 4;
     parsed.lastRealTime = Date.now();
     return parsed;
   } catch {
