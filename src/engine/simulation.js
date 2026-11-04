@@ -1,4 +1,4 @@
-import { addMoney, hourlyExpenses, settleFlight } from './economy.js';
+import { addMoney, applyHourlyCashFlow, settleFlight } from './economy.js';
 import { CONTRACT_DEFS } from '../data.js';
 
 const v = (x, y, z) => ({ x, y, z });
@@ -195,16 +195,7 @@ export function tickGame(state, realDelta) {
   state.gameMinutes += gameDelta;
   updateIncidents(state, gameDelta);
 
-  const hourlyCost = hourlyExpenses(state);
-  addMoney(state, -hourlyCost / 60 * gameDelta);
-  const retailCount = state.buildings.filter(b => ['cafe', 'shop'].includes(b.type)).length;
-  const parkingCount = state.buildings.filter(b => b.type === 'parking').length;
-  const passive = (retailCount * 22 + parkingCount * 35) * gameDelta / 60;
-  if (passive > 0) {
-    addMoney(state, passive);
-    state.retailIncome += retailCount * 22 * gameDelta / 60;
-    state.parkingIncome += parkingCount * 35 * gameDelta / 60;
-  }
+  applyHourlyCashFlow(state, gameDelta);
 
   state.passengers = Math.max(0, state.passengers - gameDelta * .018);
   const staffTotal = Object.values(state.staff).reduce((a, b) => a + b, 0);
@@ -291,7 +282,7 @@ export function giveXP(state, amount) {
   while (state.xp >= state.level * 500) {
     state.xp -= state.level * 500;
     state.level++;
-    state.money += 2500 + state.level * 500;
+    addMoney(state, 2500 + state.level * 500);
     notify(state, 'Airport level increased!', `Your airport reached level ${state.level}.`, 'success');
   }
 }
