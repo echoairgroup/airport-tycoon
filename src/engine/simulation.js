@@ -174,6 +174,65 @@ function fmtContractMoney(amount) {
   return `€${Math.round(amount).toLocaleString('en-GB')}`;
 }
 
+const PASSENGER_GROUND_SERVICES = [
+  { id: 'baggage-unload', phase: 'baggage-unload', label: 'Baggage unloading', role: 'handling', duration: 3.2 },
+  { id: 'refueling', phase: 'refueling', label: 'Fuel service', role: 'maintenance', duration: 4.0, requiredBuilding: 'fuel' },
+  { id: 'catering', phase: 'catering', label: 'Catering service', role: 'handling', duration: 2.8 },
+  { id: 'maintenance-check', phase: 'maintenance-check', label: 'Technical inspection', role: 'maintenance', duration: 3.0 },
+  { id: 'boarding', phase: 'boarding', label: 'Passenger boarding and security', role: 'security', duration: 4.6 },
+  { id: 'pushback', phase: 'pushback', label: 'Pushback and tug disconnect', role: 'handling', duration: 1.9 }
+];
+const CARGO_GROUND_SERVICES = [
+  { id: 'cargo-unload', phase: 'cargo-unload', label: 'Unload inbound freight', role: 'cargo', duration: 4.2 },
+  { id: 'refueling', phase: 'refueling', label: 'Fuel service', role: 'maintenance', duration: 4.8, requiredBuilding: 'fuel' },
+  { id: 'cargo-loading', phase: 'cargo-loading', label: 'Load outbound freight', role: 'cargo', duration: 5.4, requiredBuilding: 'cargo-terminal' },
+  { id: 'maintenance-check', phase: 'maintenance-check', label: 'Technical inspection', role: 'maintenance', duration: 3.5 },
+  { id: 'pushback', phase: 'pushback', label: 'Pushback and tug disconnect', role: 'handling', duration: 2.2 }
+];
+
+export function getGroundServicePlan(flight) {
+  return (flight.cargoTons || 0) > 0 ? CARGO_GROUND_SERVICES : PASSENGER_GROUND_SERVICES;
+}
+
+export function startGroundServices(state, flight) {
+  const plan = getGroundServicePlan(flight);
+  flight.servicePlan = plan.map(stage => ({ ...stage }));
+  flight.serviceStep = 0;
+  flight.serviceRemaining = 0;
+  flight.groundServiceComplete = false;
+  beginGroundServiceStage(state, flight);
+  notify(state, 'Aircraft turnaround started', flight.id + ' is receiving baggage, fuel, catering, inspection and boarding services.', 'info');
+}
+
+function beginGroundServiceStage(state, flight) {
+  const stage = flight.servicePlan[flight.serviceStep];
+  const staff = Math.max(0, state.staff?.[stage.role] || 0);
+  const staffingFactor = staff >= 4 ? .72 : staff >= 2 ? .9 : staff === 1 ? 1.12 : 1.45;
+  const facilityFactor = stage.requiredBuilding && !state.buildings.some(building => building.type === stage.requiredBuilding) ? 1.22 : .82;
+  const researchFactor = state.research.includes('fast-handling') ? .88 : 1;
+  flight.serviceRemaining = Math.max(1, stage.duration * staffingFactor * facilityFactor * researchFactor);
+  flight.phase = stage.phase;
+  flight.timer = 0;
+  if (stage.phase === 'boarding') notify(state, 'Boarding in progress', flight.id + ' is boarding passengers and completing passenger security checks.', 'flight');
+}
+
+export function progressGroundServices(state, flight, gameDelta) {
+  if (!Array.isArray(flight.servicePlan) || !flight.servicePlan.length) startGroundServices(state, flight);
+  if (flight.serviceStep >= flight.servicePlan.length) return true;
+  flight.serviceRemaining = Math.max(0, (flight.serviceRemaining || 0) - gameDelta);
+  if (flight.serviceRemaining > 0) return false;
+  flight.serviceStep++;
+  if (flight.serviceStep >= flight.servicePlan.length) {
+    flight.groundServiceComplete = true;
+    flight.phase = 'pushback-ready';
+    flight.timer = 0;
+    notify(state, 'Ground services complete', flight.id + ' has completed turnaround and is ready for pushback.', 'success');
+    return true;
+  }
+  beginGroundServiceStage(state, flight);
+  return false;
+}
+
 const INCIDENT_POOL = [
   { id: 'baggage-backlog', title: 'Baggage handling backlog', description: 'A late baggage belt has created a queue. Dispatch extra ground handlers before passengers become unhappy.', staffRole: 'handling', minStaff: 4, staffedCost: 550, emergencyCost: 1450, penaltyCost: 2600, satisfactionPenalty: 5, reputationPenalty: 1.2 },
   { id: 'medical-assistance', title: 'Passenger medical assistance', description: 'A passenger needs urgent help in the terminal. Security staff and the fire station can coordinate a rapid response.', staffRole: 'security', minStaff: 3, requiredBuilding: 'fire', staffedCost: 650, emergencyCost: 1850, penaltyCost: 3200, satisfactionPenalty: 7, reputationPenalty: 1.8 },
@@ -290,15 +349,24 @@ function updateFlightOperations(state, gameDelta) {
       if (advanceRoute(flight, gameDelta)) {
         releaseTaxiway(state, flight);
         state.passengers = Math.min(999, state.passengers + Math.floor(flight.passengers * .65));
-        changePhase(state, flight, 'parked', { title: 'At the gate', message: flight.id + ' is parked. Passenger and ground services are starting.', type: 'success' });
+        startGroundServices(state, flight);
       }
       continue;
     }
     if (flight.phase === 'parked') {
-      if (flight.timer >= (state.research.includes('fast-handling') ? 12 : 17) && reserveTaxiway(state, flight)) {
+      // A version 3 save may resume with an aircraft already parked at its gate.
+      startGroundServices(state, flight);
+      continue;
+    }
+    if (['baggage-unload','cargo-unload','refueling','catering','maintenance-check','cargo-loading','boarding','pushback'].includes(flight.phase)) {
+      progressGroundServices(state, flight, gameDelta);
+      continue;
+    }
+    if (flight.phase === 'pushback-ready') {
+      if (reserveTaxiway(state, flight)) {
         state.passengers = Math.max(0, state.passengers - Math.floor(flight.passengers * .55));
         setRoute(flight, routeForGate(getGate(state, flight.gateId)).reverse(), 2.6);
-        changePhase(state, flight, 'taxi-out', { title: 'Boarding complete', message: flight.id + ' has completed turnaround and is taxiing for departure.', type: 'info' });
+        changePhase(state, flight, 'taxi-out', { title: 'Pushback complete', message: flight.id + ' is taxiing out for departure.', type: 'info' });
       }
       continue;
     }
@@ -376,6 +444,15 @@ export function flightPhaseLabel(phase) {
     'runway-exit-wait': 'Waiting for taxiway',
     'taxi-in': 'Taxiing to gate',
     parked: 'At gate · turnaround',
+    'baggage-unload': 'Unloading baggage',
+    'cargo-unload': 'Unloading freight',
+    refueling: 'Refueling',
+    catering: 'Catering service',
+    'maintenance-check': 'Technical inspection',
+    'cargo-loading': 'Loading freight',
+    boarding: 'Boarding passengers',
+    pushback: 'Pushback in progress',
+    'pushback-ready': 'Ready for pushback',
     'taxi-out': 'Taxiing to runway',
     'departure-queue': 'Holding short',
     takeoff: 'Taking off',

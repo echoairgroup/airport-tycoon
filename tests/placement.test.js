@@ -249,3 +249,28 @@ test('ATC runway closure holds arrivals and prevents unsafe clearances', () => {
   assert.equal(setRunwayClosed(state, false).ok, true);
   assert.equal(clearArrival(state, arrival.id).ok, true);
 });
+
+import { getGroundServicePlan, startGroundServices, progressGroundServices } from '../src/engine/simulation.js';
+
+test('passenger flights receive a complete ground-service turnaround sequence', () => {
+  const state = INITIAL_STATE();
+  const flight = { id: 'AT101', passengers: 120, cargoTons: 0 };
+  const plan = getGroundServicePlan(flight);
+  assert.deepEqual(plan.map(stage => stage.id), ['baggage-unload','refueling','catering','maintenance-check','boarding','pushback']);
+  startGroundServices(state, flight);
+  assert.equal(flight.phase, 'baggage-unload');
+  assert.ok(flight.serviceRemaining > 0);
+  let steps = 0;
+  while (!flight.groundServiceComplete && steps < 2000) {
+    progressGroundServices(state, flight, 0.1);
+    steps++;
+  }
+  assert.equal(flight.groundServiceComplete, true);
+  assert.equal(flight.phase, 'pushback-ready');
+  assert.ok(steps > 100);
+});
+
+test('cargo flights use loading and unloading stages rather than passenger boarding', () => {
+  const flight = { id: 'AT102', passengers: 0, cargoTons: 26 };
+  assert.deepEqual(getGroundServicePlan(flight).map(stage => stage.id), ['cargo-unload','refueling','cargo-loading','maintenance-check','pushback']);
+});

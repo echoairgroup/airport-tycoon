@@ -82,3 +82,7 @@ This is the first operational traffic layer, not a certified air-traffic-control
 ### ATC controls and manual flight planning
 
 The 1.2 operations foundation also includes an accessible ATC control desk. Players can manually schedule selected aircraft/airline/destination combinations, issue holding and approach-clearance commands, and close or reopen the runway when it is safe to do so. The control desk presents runway and taxiway occupancy and the live arrival sequence. It does not yet implement a full procedural ATC phraseology model, configurable SID/STAR procedures, multiple intersecting runways or independently routed taxiway nodes.
+
+### Ground handling turnaround
+
+Passenger flights now pass through baggage unloading, refuelling, catering, technical inspection, passenger boarding/security and pushback before taxiing out. Cargo aircraft use separate unloading and freight-loading tasks. Staffing, research and the presence of specialist facilities change service times. The stages are simulated as operational tasks; dedicated animated baggage carts, fuel trucks, catering trucks, staff task agents and service billing remain future visual/economic integrations.
