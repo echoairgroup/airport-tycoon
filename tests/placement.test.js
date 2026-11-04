@@ -355,3 +355,14 @@ test('land expansion is charged and cannot be purchased without sufficient funds
   assert.equal(result.reason, 'funds');
   assert.equal(state.landParcels.length, 0);
 });
+
+import { WORLD_DESTINATIONS } from '../src/data.js';
+
+test('manual flight planning accepts the international world route catalogue', () => {
+  const state = INITIAL_STATE();
+  const flight = scheduleArrival(state, { model: 'Airbus A320neo', airline: 'Global Connect', destination: 'New York' });
+  assert.ok(flight);
+  assert.equal(flight.destination, 'New York');
+  assert.equal(flight.airline, 'Global Connect');
+  assert.equal(WORLD_DESTINATIONS.some(item => item.city === flight.destination && item.iata === 'JFK'), true);
+});

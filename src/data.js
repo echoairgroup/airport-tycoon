@@ -22,6 +22,189 @@ export const RESEARCH = [
   { id: 'premium-service', name: 'Premium Ground Service', category: 'Aircraft handling', icon: '⭐', cost: 32000, duration: 120, description: 'Earn 20% more from flight handling.', effect: 'revenue', level: 7 }
 ];
 
+export const WORLD_DESTINATIONS = [
+  {
+    "city": "Amsterdam",
+    "country": "Netherlands",
+    "iata": "AMS",
+    "lat": 52.31,
+    "lon": 4.76,
+    "distanceKm": 0,
+    "region": "Europe"
+  },
+  {
+    "city": "London",
+    "country": "United Kingdom",
+    "iata": "LHR",
+    "lat": 51.47,
+    "lon": -0.45,
+    "distanceKm": 358,
+    "region": "Europe"
+  },
+  {
+    "city": "Copenhagen",
+    "country": "Denmark",
+    "iata": "CPH",
+    "lat": 55.62,
+    "lon": 12.65,
+    "distanceKm": 634,
+    "region": "Europe"
+  },
+  {
+    "city": "Hamburg",
+    "country": "Germany",
+    "iata": "HAM",
+    "lat": 53.63,
+    "lon": 9.99,
+    "distanceKm": 366,
+    "region": "Europe"
+  },
+  {
+    "city": "Paris",
+    "country": "France",
+    "iata": "CDG",
+    "lat": 49.01,
+    "lon": 2.55,
+    "distanceKm": 430,
+    "region": "Europe"
+  },
+  {
+    "city": "Brussels",
+    "country": "Belgium",
+    "iata": "BRU",
+    "lat": 50.9,
+    "lon": 4.48,
+    "distanceKm": 173,
+    "region": "Europe"
+  },
+  {
+    "city": "Frankfurt",
+    "country": "Germany",
+    "iata": "FRA",
+    "lat": 50.04,
+    "lon": 8.56,
+    "distanceKm": 364,
+    "region": "Europe"
+  },
+  {
+    "city": "Zurich",
+    "country": "Switzerland",
+    "iata": "ZRH",
+    "lat": 47.46,
+    "lon": 8.55,
+    "distanceKm": 615,
+    "region": "Europe"
+  },
+  {
+    "city": "Madrid",
+    "country": "Spain",
+    "iata": "MAD",
+    "lat": 40.49,
+    "lon": -3.57,
+    "distanceKm": 1480,
+    "region": "Europe"
+  },
+  {
+    "city": "Vienna",
+    "country": "Austria",
+    "iata": "VIE",
+    "lat": 48.11,
+    "lon": 16.57,
+    "distanceKm": 937,
+    "region": "Europe"
+  },
+  {
+    "city": "Oslo",
+    "country": "Norway",
+    "iata": "OSL",
+    "lat": 60.2,
+    "lon": 11.1,
+    "distanceKm": 912,
+    "region": "Europe"
+  },
+  {
+    "city": "Prague",
+    "country": "Czechia",
+    "iata": "PRG",
+    "lat": 50.1,
+    "lon": 14.26,
+    "distanceKm": 711,
+    "region": "Europe"
+  },
+  {
+    "city": "Rome",
+    "country": "Italy",
+    "iata": "FCO",
+    "lat": 41.8,
+    "lon": 12.24,
+    "distanceKm": 1300,
+    "region": "Europe"
+  },
+  {
+    "city": "Istanbul",
+    "country": "Türkiye",
+    "iata": "IST",
+    "lat": 41.26,
+    "lon": 28.74,
+    "distanceKm": 2210,
+    "region": "Europe / Asia"
+  },
+  {
+    "city": "Reykjavik",
+    "country": "Iceland",
+    "iata": "KEF",
+    "lat": 63.99,
+    "lon": -22.62,
+    "distanceKm": 2020,
+    "region": "North Atlantic"
+  },
+  {
+    "city": "Dubai",
+    "country": "United Arab Emirates",
+    "iata": "DXB",
+    "lat": 25.25,
+    "lon": 55.36,
+    "distanceKm": 5160,
+    "region": "Middle East"
+  },
+  {
+    "city": "New York",
+    "country": "United States",
+    "iata": "JFK",
+    "lat": 40.64,
+    "lon": -73.78,
+    "distanceKm": 5850,
+    "region": "North America"
+  },
+  {
+    "city": "Toronto",
+    "country": "Canada",
+    "iata": "YYZ",
+    "lat": 43.68,
+    "lon": -79.63,
+    "distanceKm": 6010,
+    "region": "North America"
+  },
+  {
+    "city": "Singapore",
+    "country": "Singapore",
+    "iata": "SIN",
+    "lat": 1.36,
+    "lon": 103.99,
+    "distanceKm": 10490,
+    "region": "Asia"
+  },
+  {
+    "city": "Tokyo",
+    "country": "Japan",
+    "iata": "HND",
+    "lat": 35.55,
+    "lon": 139.78,
+    "distanceKm": 9330,
+    "region": "Asia"
+  }
+];
+
 export const INITIAL_STATE = () => ({
   version: 5, money: 75000, level: 1, xp: 0, reputation: 50, satisfaction: 82,
   passengers: 0, totalPassengers: 0, cargoTonsHandled: 0, runwayCondition: 100, gameMinutes: 8 * 60, speed: 1, weather: 'Sunny',

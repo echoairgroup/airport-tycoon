@@ -286,3 +286,42 @@
 .terminal-process-list b { color:#f1f7fb; font-size:9px; }
 .terminal-process-list small { color:#9eb7c4; font-size:7.5px; line-height:1.4; }
 @media(max-width:480px) { .terminal-view-card { align-items:flex-start; flex-direction:column; } }
+
+
+/* Global route planner — equirectangular schematic */
+.world-map-card { margin:12px 0 14px; padding:11px; border-radius:14px; background:rgba(255,255,255,.045); border:1px solid rgba(225,244,255,.1); }
+.world-map-heading,.world-map-legend { display:flex; justify-content:space-between; gap:8px; color:#a9c5d3; font-size:7px; font-weight:800; letter-spacing:.08em; }
+.world-map-heading { margin:2px 2px 9px; }
+.world-map { position:relative; width:100%; aspect-ratio:1000/480; overflow:hidden; border-radius:11px; }
+.world-map>svg { position:absolute; inset:0; width:100%; height:100%; }
+.world-map-pin { position:absolute; z-index:2; transform:translate(-50%,-50%); width:12px; height:12px; padding:0; border:0; border-radius:50%; background:#e9f5ed; box-shadow:0 0 0 3px rgba(195,236,205,.18); cursor:pointer; }
+.world-map-pin i { display:block; width:5px; height:5px; margin:auto; border-radius:50%; background:#347c64; }
+.world-map-pin span { display:none; position:absolute; left:10px; top:-4px; color:#fff; background:#14334b; border:1px solid rgba(255,255,255,.2); padding:4px 6px; border-radius:5px; font-size:7px; white-space:nowrap; }
+.world-map-pin:hover span,.world-map-pin.selected span { display:block; }
+.world-map-pin.selected { background:#ffb45e; box-shadow:0 0 0 4px rgba(255,180,94,.24),0 0 15px rgba(255,180,94,.6); }
+.world-map-pin.selected i { background:#7e4d20; }
+.world-map-home { position:absolute; z-index:3; transform:translate(8px,-18px); padding:3px 5px; border-radius:4px; color:#122d3e; background:#b4ed86; font-size:6px; font-weight:900; letter-spacing:.06em; }
+.world-map-legend { align-items:center; margin:9px 2px 0; letter-spacing:0; font-weight:600; }
+.world-map-legend span { display:flex; align-items:center; gap:5px; }
+.world-map-legend i { display:inline-block; width:7px; height:7px; border-radius:50%; }
+.hub-dot { background:#b4ed86; }.route-dot { background:#ffb45e; }
+.world-map-legend b { color:#e0edf2; }
+.world-route-summary { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0 16px; }
+.world-route-summary>div { padding:10px; border-radius:10px; background:rgba(255,255,255,.05); }
+.world-route-summary small,.world-route-summary strong,.world-route-summary span { display:block; }
+.world-route-summary small { color:#9eb7c4; font-size:6.5px; font-weight:800; letter-spacing:.07em; }
+.world-route-summary strong { margin-top:5px; color:#f1f8fb; font-size:12px; }
+.world-route-summary span { margin-top:4px; color:#9eb7c4; font-size:7px; }
+.world-flight-config { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; }
+.world-flight-config label { color:#9eb7c4; font-size:7px; font-weight:800; letter-spacing:.08em; }
+.world-flight-config select { display:block; width:100%; margin-top:5px; padding:9px 7px; border-radius:8px; color:#e8f3f8; background:#173c56; border:1px solid rgba(224,244,255,.15); font-size:8px; }
+.world-schedule-button { width:100%; padding:12px; margin:3px 0 16px; border:0; border-radius:10px; color:#153b2a; background:linear-gradient(135deg,#b0ee7b,#70d393); font-size:8px; font-weight:900; letter-spacing:.08em; cursor:pointer; }
+.world-destination-list { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:10px 0 14px; }
+.world-destination-card { display:grid; grid-template-columns:32px minmax(0,1fr) auto; align-items:center; gap:6px; min-width:0; padding:8px 6px; border-radius:9px; color:#e8f3f8; background:rgba(255,255,255,.04); border:1px solid rgba(225,244,255,.08); text-align:left; cursor:pointer; }
+.world-destination-card.selected { border-color:rgba(255,180,94,.55); background:rgba(255,180,94,.09); }
+.world-destination-code { display:grid; place-items:center; width:30px; height:25px; border-radius:6px; background:rgba(93,185,225,.15); color:#8bd7f4; font-size:7px; font-weight:900; }
+.world-destination-card b,.world-destination-card small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.world-destination-card b { font-size:8px; }
+.world-destination-card small { margin-top:3px; color:#9eb7c4; font-size:6px; }
+.world-destination-card>strong { color:#b5d3dd; font-size:7px; white-space:nowrap; }
+@media(max-width:480px) { .world-destination-list,.world-flight-config { grid-template-columns:1fr; } }

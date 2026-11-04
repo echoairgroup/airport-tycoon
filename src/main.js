@@ -1,5 +1,5 @@
 import { AirportWorld } from './world/World.js';
-import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from './data.js';
+import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS, WORLD_DESTINATIONS } from './data.js';
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney, LOAN_OFFERS, INVESTMENT_DEFS, takeLoan, repayLoan, setTaxRate, investInProject } from './engine/economy.js';
 import { tickGame, flightPhaseLabel, giveXP, resolveIncident, scheduleArrival, holdArrival, clearArrival, setRunwayClosed } from './engine/simulation.js';
@@ -12,6 +12,9 @@ let currentTab = 'overview';
 let selectedBuild = null;
 let selectedCategory = 'All';
 let terminalInteriorVisible = false;
+let selectedWorldDestination = 'London';
+let selectedWorldModel = 'Airbus A320neo';
+let selectedWorldAirline = 'CloudJet';
 let lastFrame = performance.now();
 let lastAutosave = 0;
 let lastSimulationNotification = 0;
@@ -147,7 +150,7 @@ function renderPanel() {
   const content=$('panel-content');
   if(!content) return;
   const template={
-    overview:renderOverview, operations:renderOperations, atc:renderATC, terminal:renderTerminal, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    overview:renderOverview, operations:renderOperations, atc:renderATC, terminal:renderTerminal, worldmap:renderWorldMap, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
     employees:renderEmployees, passengers:renderPassengers, finances:renderFinances, contracts:renderContracts,
     research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
@@ -251,6 +254,26 @@ function renderTerminal() {
     '<div class="section-title"><h3>Passenger journey</h3><span class="muted-label">TERMINAL PROCESSES</span></div>'+
     '<div class="terminal-process-list"><div><i>01</i><b>Check-in & bag drop</b><small>Passengers receive boarding documents and hand over hold luggage.</small></div><div><i>02</i><b>Security screening</b><small>Passenger and cabin-baggage checks before airside access.</small></div><div><i>03</i><b>Departure lounge & retail</b><small>Waiting, seating, food, shopping and gate announcements.</small></div><div><i>04</i><b>Gate & boarding</b><small>Boarding is simulated as a timed turnaround task for each flight.</small></div><div><i>05</i><b>Baggage reclaim</b><small>Arriving passengers collect luggage while the aircraft is turned around.</small></div></div>'+
     '<div class="info-note"><b>Visual and simulation scope</b><span>The terminal is now a visible cutaway with check-in desks, security lanes, seating, retail and a baggage carousel. Boarding and baggage tasks affect flight turnaround. Individual passengers are still a lightweight crowd simulation, not yet individually routed through every queue or scanned by a staffed security agent.</span></div>';
+}
+
+function renderWorldMap() {
+  const selected=WORLD_DESTINATIONS.find(item=>item.city===selectedWorldDestination)||WORLD_DESTINATIONS[1];
+  const home=WORLD_DESTINATIONS[0];
+  const project=point=>({x:((point.lon+180)/360)*1000,y:((80-point.lat)/145)*480});
+  const a=project(home),b=project(selected);
+  const mapPins=WORLD_DESTINATIONS.filter(item=>item.city!==home.city).map(item=>{
+    const p=project(item),active=item.city===selected.city;
+    return '<button class="world-map-pin '+(active?'selected':'')+'" style="left:'+(p.x/10)+'%;top:'+(p.y/4.8)+'%" data-world-destination="'+item.city+'" title="'+item.city+' · '+item.iata+'"><i></i><span>'+item.city+'</span></button>';
+  }).join('');
+  const cities=WORLD_DESTINATIONS.filter(item=>item.city!==home.city);
+  return panelHeader('GLOBAL ROUTE NETWORK','World map & flight planning','Choose an international destination, aircraft type and airline, then add the route to your live airport schedule.')+
+    '<div class="world-map-card"><div class="world-map-heading"><span>✈ SKYPORT HUB · AMS</span><span>GLOBAL NETWORK</span></div><div class="world-map"><svg viewBox="0 0 1000 480" role="img" aria-label="Schematic world map showing airport destinations"><defs><linearGradient id="world-water" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#153f5c"/><stop offset="1" stop-color="#0b253c"/></linearGradient></defs><rect width="1000" height="480" rx="16" fill="url(#world-water)"/><g stroke="rgba(186,226,239,.1)" stroke-width="1" fill="none"><path d="M0 80H1000M0 160H1000M0 240H1000M0 320H1000M0 400H1000M200 0V480M400 0V480M600 0V480M800 0V480"/></g><g fill="#659a7e" stroke="#8fc3a0" stroke-width="2" opacity=".88"><path d="M92 80L145 52 211 66 251 91 273 129 250 154 215 164 190 201 156 196 134 166 104 145 83 111Z"/><path d="M250 218L281 235 297 284 283 330 270 370 248 411 229 375 223 325 210 282Z"/><path d="M425 74L461 56 496 67 510 90 495 112 467 118 447 105Z"/><path d="M446 132L480 113 514 124 537 151 548 192 528 231 514 274 487 311 466 272 455 233 438 198 421 164Z"/><path d="M493 72L553 53 621 60 663 81 713 74 761 99 823 101 873 130 888 159 847 178 803 161 771 194 723 176 682 198 634 181 601 156 556 147 522 121Z"/><path d="M665 208L711 197 755 219 780 247 759 277 725 281 696 259Z"/><path d="M831 337L884 326 925 345 914 372 873 382 841 367Z"/><path d="M35 40L61 22 95 31 101 55 75 69 47 61Z"/></g><path d="M'+a.x+' '+a.y+' Q'+((a.x+b.x)/2)+' '+Math.max(8,Math.min(a.y,b.y)-70)+' '+b.x+' '+b.y+'" fill="none" stroke="#b4ed86" stroke-width="3" stroke-dasharray="8 7" opacity=".95"/><circle cx="'+a.x+'" cy="'+a.y+'" r="8" fill="#b4ed86" stroke="#fff" stroke-width="3"/><circle cx="'+b.x+'" cy="'+b.y+'" r="7" fill="#ffb45e" stroke="#fff" stroke-width="3"/></svg>'+mapPins+'<div class="world-map-home" style="left:'+(a.x/10)+'%;top:'+(a.y/4.8)+'%">AMS · HUB</div></div><div class="world-map-legend"><span><i class="hub-dot"></i> Skyport home hub</span><span><i class="route-dot"></i> Selected route</span><b>'+cities.length+' destinations</b></div></div>'+
+    '<div class="world-route-summary"><div><small>SELECTED DESTINATION</small><strong>'+selected.city+' · '+selected.iata+'</strong><span>'+selected.country+' · '+selected.region+'</span></div><div><small>ESTIMATED ROUTE DISTANCE</small><strong>'+selected.distanceKm.toLocaleString('en-GB')+' km</strong><span>One-way route estimate</span></div></div>'+
+    '<div class="section-title"><h3>Flight configuration</h3><span class="muted-label">SCHEDULE AN ARRIVAL</span></div>'+
+    '<div class="world-flight-config"><label>AIRCRAFT<select id="world-model-select">'+['ATR 72-600','Dash 8 Q400','Airbus A320neo','Boeing 737-800','Boeing 737-800F','Airbus A330F'].map(x=>'<option '+(x===selectedWorldModel?'selected':'')+'>'+x+'</option>').join('')+'</select></label><label>AIRLINE<select id="world-airline-select">'+['CloudJet','Northstar Air','EuroConnect','BluePeak','SkyWays','CargoLink','Northstar Freight','AeroCargo','Global Connect'].map(x=>'<option '+(x===selectedWorldAirline?'selected':'')+'>'+x+'</option>').join('')+'</select></label></div>'+
+    '<button class="world-schedule-button" data-schedule-world-route>＋ SCHEDULE FLIGHT TO '+selected.city.toUpperCase()+'</button>'+
+    '<div class="section-title"><h3>International destinations</h3><span class="muted-label">'+cities.length+' AIRPORTS</span></div><div class="world-destination-list">'+cities.map(item=>'<button class="world-destination-card '+(item.city===selected.city?'selected':'')+'" data-world-destination="'+item.city+'"><span class="world-destination-code">'+item.iata+'</span><span><b>'+item.city+'</b><small>'+item.country+' · '+item.region+'</small></span><strong>'+item.distanceKm.toLocaleString('en-GB')+' km</strong></button>').join('')+'</div>'+
+    '<div class="info-note"><b>Route-map scope</b><span>This is a schematic global route planner based on a fictional Skyport hub represented at Amsterdam. Distances are approximate planning values. The game does not yet load live airline schedules, real airport slot data or real-world flight tracks.</span></div>';
 }
 
 function renderFlights() {
@@ -474,6 +497,17 @@ function advanceTutorial(skip = false) {
 }
 
 function handlePanelClick(e) {
+  const worldDestination=e.target.closest('[data-world-destination]');
+  if(worldDestination){
+    selectedWorldDestination=worldDestination.dataset.worldDestination;
+    currentTab='worldmap';renderPanel();return;
+  }
+  if(e.target.closest('[data-schedule-world-route]')){
+    const flight=scheduleArrival(state,{model:selectedWorldModel,airline:selectedWorldAirline,destination:selectedWorldDestination});
+    if(!flight)notifyLocal('No free aircraft stand','Build another gate or wait for a visiting aircraft to depart before planning another arrival.','warning');
+    else notifyLocal('International flight scheduled',flight.id+' · '+flight.airline+' will arrive from '+flight.destination+'.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
   if(e.target.closest('[data-action="terminal-view"]')){
     terminalInteriorVisible=!terminalInteriorVisible;
     world.setTerminalInteriorMode(terminalInteriorVisible);
@@ -650,6 +684,10 @@ $('save-button').addEventListener('click',()=>saveNow());
 $('main-nav').addEventListener('click',handlePanelClick);
 $('panel-content').addEventListener('click',handlePanelClick);
 $('tutorial-card').addEventListener('click',handlePanelClick);
+$('panel-content').addEventListener('change',e=>{
+  if(e.target.id==='world-model-select'){selectedWorldModel=e.target.value;renderPanel();}
+  if(e.target.id==='world-airline-select'){selectedWorldAirline=e.target.value;renderPanel();}
+});
 $('panel-content').addEventListener('change',e=>{if(e.target.id==='quality-select'){graphicsQuality=e.target.value;world.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,graphicsQuality==='High'?2:graphicsQuality==='Medium'?1.4:1));notifyLocal('Graphics updated',`Rendering quality set to ${graphicsQuality}.`,'info');} });
 $('bottom-controls').addEventListener('click',e=>{const b=e.target.closest('[data-speed]');if(!b)return;state.speed=Number(b.dataset.speed);refreshHUD();notifyLocal(state.speed===0?'Simulation paused':`Simulation speed ${state.speed}×`,state.speed===0?'Airport operations are paused.':`Game time is running at ${state.speed}× speed.`,'info');});
 $('cancel-build').addEventListener('click',cancelBuild);

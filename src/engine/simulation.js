@@ -1,5 +1,5 @@
 import { addMoney, applyHourlyCashFlow, settleFlight } from './economy.js';
-import { CONTRACT_DEFS } from '../data.js';
+import { CONTRACT_DEFS, WORLD_DESTINATIONS } from '../data.js';
 import { getActiveFlights, getAvailableGate, reserveRunway, releaseRunway, reserveTaxiway, releaseTaxiway, syncPrimaryFlight } from './air-traffic.js';
 
 const v = (x, y, z) => ({ x, y, z });
@@ -85,7 +85,7 @@ export function scheduleArrival(state, options = {}) {
   ];
   const selectedModel = models.find(item => item.model === options.model);
   const model = selectedModel || models[(sequence - 1) % models.length];
-  const destinations = ['Amsterdam', 'Copenhagen', 'London', 'Hamburg', 'Paris', 'Brussels', 'Frankfurt', 'Zurich', 'Madrid', 'Vienna', 'Oslo', 'Prague'];
+  const destinations = WORLD_DESTINATIONS.map(item => item.city);
   const passengerAirlines = ['SkyWays', 'Northstar Air', 'CloudJet', 'BluePeak', 'EuroConnect'];
   const cargoAirlines = ['CargoLink', 'Northstar Freight', 'AeroCargo'];
   const flight = {
