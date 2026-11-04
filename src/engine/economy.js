@@ -19,11 +19,13 @@ export function hourlyExpenseBreakdown(state) {
   const wages = Object.values(state.staff).reduce((sum, count) => sum + count * 55, 0);
   const maintenance = state.buildings.reduce((sum, building) => sum + (building.upkeep || 0), 0);
   const runwayMaintenance = Math.max(0, 82 - (state.runwayCondition ?? 100)) * 1.35;
+  const loanInterest = Math.max(0, Number(state.loanDebt) || 0) * 0.000012;
   return {
     wages,
     baseOperations: 280,
     buildingMaintenance: maintenance * (state.research.includes('green-energy') ? 0.9 : 1),
     runwayMaintenance,
+    loanInterest,
   };
 }
 
@@ -57,6 +59,68 @@ export function applyHourlyCashFlow(state, gameMinutes) {
   state.hotelIncome = (state.hotelIncome || 0) + incomeParts.hotels * factor;
   state.cargoIncome = (state.cargoIncome || 0) + incomeParts.cargo * factor;
   return { income, expenses, net: income - expenses };
+}
+
+/**
+ * Airport financing: loans are liabilities, not income. Interest is booked
+ * through hourlyExpenseBreakdown; principal repayments reduce cash and debt.
+ */
+export function takeLoan(state, amount) {
+  const principal = Math.round(Number(amount) || 0);
+  if (principal < 10000 || principal > 500000) return { ok: false, reason: 'amount' };
+  if (!Number.isFinite(state.money)) return { ok: false, reason: 'balance' };
+  state.loanDebt = Math.max(0, Number(state.loanDebt) || 0) + principal;
+  state.money = Math.round((state.money + principal) * 100) / 100;
+  state.loanHistory = Array.isArray(state.loanHistory) ? state.loanHistory : [];
+  state.loanHistory.push({ type: 'borrow', amount: principal, time: state.gameMinutes });
+  return { ok: true, amount: principal, debt: state.loanDebt };
+}
+
+export function repayLoan(state, amount) {
+  const repayment = Math.round(Number(amount) || 0);
+  const debt = Math.max(0, Number(state.loanDebt) || 0);
+  if (repayment < 1000 || repayment > debt) return { ok: false, reason: 'amount' };
+  if (state.money < repayment) return { ok: false, reason: 'funds' };
+  state.money = Math.round((state.money - repayment) * 100) / 100;
+  state.loanDebt = Math.max(0, debt - repayment);
+  state.loanHistory = Array.isArray(state.loanHistory) ? state.loanHistory : [];
+  state.loanHistory.push({ type: 'repay', amount: repayment, time: state.gameMinutes });
+  state.lifetimeExpenses = (state.lifetimeExpenses || 0) + repayment;
+  return { ok: true, amount: repayment, debt: state.loanDebt };
+}
+
+export function createInvestment(state, amount, label = 'Airport expansion fund') {
+  const principal = Math.round(Number(amount) || 0);
+  if (![5000, 10000, 25000].includes(principal)) return { ok: false, reason: 'amount' };
+  if (state.money < principal) return { ok: false, reason: 'funds' };
+  state.money = Math.round((state.money - principal) * 100) / 100;
+  state.investments = Array.isArray(state.investments) ? state.investments : [];
+  state.investments.push({
+    id: `inv-${state.investments.length + 1}-${Math.floor(state.gameMinutes)}`,
+    label, principal, returnValue: Math.round(principal * 1.08),
+    matureAt: state.gameMinutes + 7 * 1440, status: 'active'
+  });
+  state.lifetimeExpenses = (state.lifetimeExpenses || 0) + principal;
+  return { ok: true, amount: principal, matureAt: state.gameMinutes + 7 * 1440 };
+}
+
+export function settleMatureInvestments(state) {
+  const active = Array.isArray(state.investments) ? state.investments : [];
+  const remaining = [];
+  let paid = 0;
+  for (const investment of active) {
+    if (investment.status === 'active' && state.gameMinutes >= investment.matureAt) {
+      const payout = Math.max(0, Number(investment.returnValue) || 0);
+      state.money = Math.round((state.money + payout) * 100) / 100;
+      state.lifetimeRevenue = (state.lifetimeRevenue || 0) + payout;
+      investment.status = 'matured';
+      investment.paidAt = state.gameMinutes;
+      paid += payout;
+    }
+    if (investment.status === 'active') remaining.push(investment);
+  }
+  state.investments = remaining;
+  return paid;
 }
 
 export function settleFlight(state, passengers = 64, cargoTons = 0) {

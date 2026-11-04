@@ -1,4 +1,4 @@
-import { addMoney, applyHourlyCashFlow, settleFlight } from './economy.js';
+import { addMoney, applyHourlyCashFlow, settleFlight, settleMatureInvestments } from './economy.js';
 import { CONTRACT_DEFS } from '../data.js';
 
 const v = (x, y, z) => ({ x, y, z });
@@ -56,9 +56,34 @@ function notify(state, title, message, type = 'info') {
   state.notifications.unshift({ id: `${Date.now()}-${Math.random()}`, title, message, type, time: state.gameMinutes });
   state.notifications = state.notifications.slice(0, 6);
 }
-function startFlight(state) {
-  const availableGates = [START_GATE, ...state.buildings.filter(b => b.type === 'gate')];
-  const gate = availableGates[state.flightsCompleted % availableGates.length];
+function ensureFlightList(state) {
+  if (!Array.isArray(state.activeFlights)) state.activeFlights = state.activeFlight ? [state.activeFlight] : [];
+  return state.activeFlights;
+}
+function syncPrimaryFlight(state) {
+  state.activeFlight = ensureFlightList(state)[0] || null;
+}
+function isRunwayOccupied(state, exceptId = null) {
+  return ensureFlightList(state).some(flight =>
+    flight.id !== exceptId && ['approach', 'landing-rollout', 'taxi-out', 'takeoff'].includes(flight.phase)
+  );
+}
+function availableGate(state) {
+  const flights = ensureFlightList(state);
+  const gates = [START_GATE, ...state.buildings.filter(b => b.type === 'gate')];
+  return gates.find(gate => !flights.some(flight => flight.gateId === gate.id)) || null;
+}
+function assignApproach(state, flight, gate) {
+  flight.gateId = gate.id;
+  setRoute(flight, [v(-66, 12, -16), v(-52, 7, -16), v(-39, 3.1, -16), v(-28, 1.19, -16)], 4.0);
+  changePhase(state, flight, 'approach', {
+    title: 'ATC landing clearance',
+    message: `${flight.airline} ${flight.id} cleared to land runway 09. Assigned stand ${gate.id === START_GATE.id ? '01' : gate.id}.`,
+    type: 'flight'
+  });
+}
+function startFlight(state, planned = null) {
+  const flights = ensureFlightList(state);
   const models = [
     { model: 'ATR 72-600', passengers: 68, kind: 'regional' },
     { model: 'Dash 8 Q400', passengers: 74, kind: 'regional' },
@@ -67,26 +92,35 @@ function startFlight(state) {
     { model: 'Boeing 737-800F', passengers: 0, cargoTons: 22, kind: 'cargo' },
     { model: 'Airbus A330F', passengers: 0, cargoTons: 44, kind: 'cargo' },
   ];
-  const aircraft = models[state.flightsCompleted % models.length];
-  const f = {
-    id: `AT${String(state.flightsCompleted + 1).padStart(3, '0')}`,
-    airline: aircraft.kind === 'cargo'
-      ? ['CargoLink', 'Northstar Freight'][state.flightsCompleted % 2]
-      : ['SkyWays', 'Northstar Air', 'CloudJet', 'BluePeak'][state.flightsCompleted % 4],
+  const sequence = state.nextFlightNumber || (state.flightsCompleted + flights.length + 1);
+  const aircraft = planned || models[(sequence - 1) % models.length];
+  const airline = planned?.airline || (aircraft.kind === 'cargo'
+    ? ['CargoLink', 'Northstar Freight'][sequence % 2]
+    : ['SkyWays', 'Northstar Air', 'CloudJet', 'BluePeak Airways'][sequence % 4]);
+  const gate = availableGate(state);
+  const flight = {
+    id: `AT${String(sequence).padStart(3, '0')}`,
+    airline,
     model: aircraft.model,
     kind: aircraft.kind,
-    passengers: aircraft.kind === 'cargo' ? 0 : Math.min(aircraft.passengers, 58 + (state.flightsCompleted * 7 % Math.max(1, aircraft.passengers - 57))),
-    cargoTons: aircraft.cargoTons || 0,
-    destination: ['Amsterdam', 'Copenhagen', 'London', 'Hamburg', 'Paris', 'Brussels'][state.flightsCompleted % 6],
-    gateId: gate.id,
-    phase: 'approach',
+    passengers: planned ? planned.passengers : (aircraft.kind === 'cargo' ? 0 : Math.min(aircraft.passengers, 58 + (sequence * 7 % Math.max(1, aircraft.passengers - 57)))),
+    cargoTons: planned ? planned.cargoTons : (aircraft.cargoTons || 0),
+    destination: planned?.destination || ['Amsterdam', 'Copenhagen', 'London', 'Hamburg', 'Paris', 'Brussels', 'Frankfurt'][sequence % 7],
+    destinationCode: planned?.destinationCode || null,
+    gateId: null,
+    phase: 'holding',
     timer: 0,
-    position: v(-66, 12, -16),
+    position: v(-76 - flights.filter(item => item.phase === 'holding').length * 5, 14, -16),
     yaw: Math.PI / 2,
+    source: planned?.source || 'automatic'
   };
-  setRoute(f, [v(-66, 12, -16), v(-52, 7, -16), v(-39, 3.1, -16), v(-28, 1.19, -16)], 4.0);
-  state.activeFlight = f;
-  notify(state, 'Aircraft on final', `${f.airline} ${f.id} is descending for runway 09.`, 'flight');
+  state.nextFlightNumber = sequence + 1;
+  flights.push(flight);
+  const firstAvailable = availableGate(state);
+  if (firstAvailable && !isRunwayOccupied(state, flight.id) && state.atcMode !== 'manual') assignApproach(state, flight, firstAvailable);
+  else notify(state, 'Aircraft in holding', `${flight.airline} ${flight.id} is holding for runway and stand capacity.`, 'flight');
+  syncPrimaryFlight(state);
+  return flight;
 }
 export function progressContracts(state, flight) {
   const active = Array.isArray(state.activeContracts) ? state.activeContracts : [];
@@ -168,10 +202,10 @@ export function resolveIncident(state, hasQualifiedTeam = false) {
   return { ok: true, cost };
 }
 
-function finishFlight(state) {
-  const f = state.activeFlight;
+function finishFlight(state, f) {
   const result = settleFlight(state, f.passengers, f.cargoTons || 0);
   state.cargoTonsHandled = (state.cargoTonsHandled || 0) + (f.cargoTons || 0);
+  state._dailyProfit = (state._dailyProfit || 0) + result.net;
   state.stats.peakPassengers = Math.max(state.stats.peakPassengers, state.passengers);
   state.reputation = Math.min(100, state.reputation + (state.satisfaction > 75 ? .45 : -.2));
   state.flightHistory.unshift({ id: f.id, airline: f.airline, model: f.model, passengers: f.passengers, cargoTons: f.cargoTons || 0, kind: f.kind || 'regional', destination: f.destination || 'Regional network', net: result.net, time: state.gameMinutes, status: 'Departed' });
@@ -179,13 +213,24 @@ function finishFlight(state) {
   state.flightHistory = state.flightHistory.slice(0, 20);
   const operation = f.cargoTons ? `${f.cargoTons} tonnes of cargo delivered` : `${f.passengers} passengers served`;
   notify(state, 'Flight departed', `${f.id} took off successfully. ${operation}. Net contribution: €${Math.round(result.net).toLocaleString('en-GB')}.`, 'success');
-  state.activeFlight = null;
-  state.nextFlightAt = state.gameMinutes + (state.research.includes('digital-slots') ? 14 : 18);
+  state.activeFlights = ensureFlightList(state).filter(item => item.id !== f.id);
+  syncPrimaryFlight(state);
 }
 function changePhase(state, flight, phase, message) {
   flight.phase = phase;
   flight.timer = 0;
   if (message) notify(state, message.title, message.message, message.type || 'info');
+}
+
+export function clearFlightForApproach(state, flightId) {
+  const flight = ensureFlightList(state).find(item => item.id === flightId);
+  if (!flight || flight.phase !== 'holding') return { ok: false, reason: 'not-holding' };
+  if (isRunwayOccupied(state, flight.id)) return { ok: false, reason: 'runway-busy' };
+  const gate = availableGate(state);
+  if (!gate) return { ok: false, reason: 'no-gate' };
+  assignApproach(state, flight, gate);
+  syncPrimaryFlight(state);
+  return { ok: true, gateId: gate.id };
 }
 
 export function tickGame(state, realDelta) {
@@ -195,7 +240,10 @@ export function tickGame(state, realDelta) {
   state.gameMinutes += gameDelta;
   updateIncidents(state, gameDelta);
 
-  applyHourlyCashFlow(state, gameDelta);
+  const cashFlow = applyHourlyCashFlow(state, gameDelta);
+  state._dailyProfit = (state._dailyProfit || 0) + cashFlow.net * gameDelta / 60;
+  const maturedInvestmentPayout = settleMatureInvestments(state);
+  if (maturedInvestmentPayout > 0) notify(state, 'Investment matured', `Your airport investment paid out €${Math.round(maturedInvestmentPayout).toLocaleString('en-GB')}.`, 'success');
 
   state.passengers = Math.max(0, state.passengers - gameDelta * .018);
   const staffTotal = Object.values(state.staff).reduce((a, b) => a + b, 0);
@@ -206,9 +254,21 @@ export function tickGame(state, realDelta) {
     state.satisfaction = Math.max(45, state.satisfaction - gameDelta * (state.buildings.some(b => b.type === 'fire') ? .003 : .006));
   }
 
-  if (state.activeFlight) {
-    const f = state.activeFlight;
+  const flights = ensureFlightList(state);
+  // Aircraft are independent entities. A single runway is protected by ATC
+  // sequencing, while each occupied stand remains reserved through departure.
+  for (const f of [...flights]) {
     f.timer += gameDelta;
+    if (f.phase === 'holding') {
+      const gate = availableGate(state);
+      if (gate && !isRunwayOccupied(state, f.id) && state.atcMode !== 'manual') {
+        assignApproach(state, f, gate);
+      } else {
+        const queueIndex = flights.filter(item => item.phase === 'holding').findIndex(item => item.id === f.id);
+        f.position = v(-76 - Math.max(0, queueIndex) * 5, 14 + Math.max(0, queueIndex) * 2, -16);
+      }
+      continue;
+    }
     if (f.phase === 'approach') {
       if (advanceRoute(f, gameDelta)) {
         state.stats.landings++;
@@ -220,15 +280,16 @@ export function tickGame(state, realDelta) {
       if (advanceRoute(f, gameDelta)) {
         const gate = getGate(state, f.gateId);
         setRoute(f, routeForGate(gate), 2.7);
-        changePhase(state, f, 'taxi-in', { title: 'Runway vacated', message: `${f.id} is taxiing to its assigned gate.`, type: 'flight' });
+        changePhase(state, f, 'taxi-in', { title: 'Runway vacated', message: `${f.id} is taxiing to stand ${f.gateId === START_GATE.id ? '01' : f.gateId}.`, type: 'flight' });
       }
     } else if (f.phase === 'taxi-in') {
       if (advanceRoute(f, gameDelta)) {
         state.passengers = Math.min(999, state.passengers + Math.floor(f.passengers * .65));
-        changePhase(state, f, 'parked', { title: 'At the gate', message: `${f.id} is parked. Passengers are disembarking and the aircraft is being serviced.`, type: 'success' });
+        changePhase(state, f, 'parked', { title: 'At the gate', message: `${f.id} is parked. Ground handling, unloading and turnaround have started.`, type: 'success' });
       }
     } else if (f.phase === 'parked') {
-      if (f.timer >= (state.research.includes('fast-handling') ? 12 : 17)) {
+      const handlingTime = state.research.includes('fast-handling') ? 12 : 17;
+      if (f.timer >= handlingTime) {
         state.passengers = Math.max(0, state.passengers - Math.floor(f.passengers * .55));
         const gate = getGate(state, f.gateId);
         setRoute(f, routeForGate(gate).reverse(), 2.6);
@@ -237,14 +298,22 @@ export function tickGame(state, realDelta) {
     } else if (f.phase === 'taxi-out') {
       if (advanceRoute(f, gameDelta)) {
         setRoute(f, [v(22, 1.19, -16), v(32, 2.6, -16), v(44, 6.0, -16), v(62, 11.5, -16)], 5.5);
-        changePhase(state, f, 'takeoff', { title: 'Take-off roll', message: `${f.id} is accelerating for departure.`, type: 'flight' });
+        changePhase(state, f, 'takeoff', { title: 'Take-off clearance', message: `${f.id} cleared for departure runway 27.`, type: 'flight' });
       }
     } else if (f.phase === 'takeoff') {
-      if (advanceRoute(f, gameDelta)) finishFlight(state);
+      if (advanceRoute(f, gameDelta)) finishFlight(state, f);
     }
+  }
+
+  const queuedIndex = (state.flightPlanQueue || []).findIndex(plan => plan.scheduledAt <= state.gameMinutes);
+  if (queuedIndex >= 0) {
+    const [plan] = state.flightPlanQueue.splice(queuedIndex, 1);
+    startFlight(state, plan);
   } else if (state.gameMinutes >= state.nextFlightAt) {
     startFlight(state);
+    state.nextFlightAt = state.gameMinutes + (state.research.includes('digital-slots') ? 14 : 18);
   }
+  syncPrimaryFlight(state);
 
   if (!state._weatherAt) state._weatherAt = state.gameMinutes + 150;
   if (state.gameMinutes >= state._weatherAt) {
@@ -261,6 +330,29 @@ export function tickGame(state, realDelta) {
     addMoney(state, 2500 + state.level * 500);
     notify(state, 'Airport level increased!', `Your airport reached level ${state.level}. New facilities may be unlocked.`, 'success');
   }
+  const previousDay = Number.isInteger(state._taxDay) ? state._taxDay : Math.floor((state.gameMinutes - gameDelta) / 1440);
+  const currentDay = Math.floor(state.gameMinutes / 1440);
+  if (currentDay > previousDay) {
+    const taxableProfit = Math.max(0, Number(state._dailyProfit) || 0);
+    const tax = Math.round(taxableProfit * 0.12);
+    if (tax > 0) {
+      addMoney(state, -tax);
+      state.taxesPaid = (state.taxesPaid || 0) + tax;
+      notify(state, 'Daily airport tax paid', `€${tax.toLocaleString('en-GB')} was paid on your positive daily operating result.`, 'info');
+    }
+    state._dailyProfit = 0;
+    state._taxDay = currentDay;
+    if (state.money < 0) state.insolvencyDays = (state.insolvencyDays || 0) + 1;
+    else state.insolvencyDays = 0;
+    if ((state.insolvencyDays || 0) >= 3 && !state.bankrupt) {
+      state.bankrupt = true;
+      state.speed = 0;
+      notify(state, 'Airport insolvent', 'The airport has remained in debt for three in-game days. The simulation is paused; review financing and operating costs.', 'warning');
+    }
+  } else {
+    state._taxDay = previousDay;
+  }
+
   if (state.money < 0) state.satisfaction = Math.max(35, state.satisfaction - gameDelta * .025);
 }
 
@@ -269,6 +361,7 @@ export function getGateCount(state) {
 }
 export function flightPhaseLabel(phase) {
   return ({
+    holding: 'Holding for ATC clearance',
     approach: 'Final approach',
     'landing-rollout': 'Landing roll',
     'taxi-in': 'Taxiing to gate',

@@ -141,3 +141,12 @@
 .event-item small { font-size: 8.5px; }
 .progress-label { font-size: 8px; }
 .toast { font-size: 10px; }
+
+/* Living Airport 1.2: airline scheduling and airport finance controls. */
+.flight-planner-card { display:grid; gap:12px; }
+.flight-planner-grid { display:grid; grid-template-columns:1fr; gap:9px; }
+.flight-planner-grid label { display:grid; gap:5px; color:#9eb8c9; font-size:9px; text-transform:uppercase; letter-spacing:.08em; }
+.flight-planner-grid select { width:100%; min-width:0; border:1px solid rgba(170,205,224,.2); border-radius:8px; background:#132c40; color:#eff8fc; padding:9px 10px; font:inherit; font-size:10px; }
+.flight-planner-card .muted-label { line-height:1.5; }
+.flight-planner-card button, .setting-actions button { white-space:normal; }
+@media(min-width:560px) { .flight-planner-grid { grid-template-columns:1fr 1fr; } .flight-planner-grid label:last-child { grid-column:1 / -1; } }

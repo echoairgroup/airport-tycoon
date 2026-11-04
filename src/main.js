@@ -1,9 +1,10 @@
 import { AirportWorld } from './world/World.js';
 import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from './data.js';
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
-import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney } from './engine/economy.js';
-import { tickGame, flightPhaseLabel, giveXP, resolveIncident } from './engine/simulation.js';
+import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney, takeLoan, repayLoan, createInvestment } from './engine/economy.js';
+import { tickGame, flightPhaseLabel, giveXP, resolveIncident, clearFlightForApproach } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
+import { createFlightPlan, FLIGHT_AIRLINES, FLIGHT_DESTINATIONS, FLIGHT_AIRCRAFT } from './engine/flight-planning.js';
 
 let state = INITIAL_STATE();
 let world;
@@ -25,13 +26,14 @@ const timeLabel = minutes => `${String(Math.floor(minutes / 60) % 24).padStart(2
 const totalStaff = () => Object.values(state.staff).reduce((a,b)=>a+b,0);
 const extraGates = () => state.buildings.filter(b=>b.type==='gate').length;
 const allBuildings = () => state.buildings.length + 3;
+const activeFlights = () => Array.isArray(state.activeFlights) ? state.activeFlights : (state.activeFlight ? [state.activeFlight] : []);
 
 function bootWorld() {
   world = new AirportWorld($('game-world'), onWorldClick, onWorldHover);
   world.addInitialGate();
   for (const building of state.buildings) world.addBuilding(building);
   world.setWeather(state.weather);
-  world.syncFlight(state.activeFlight);
+  world.syncFlights(activeFlights());
 }
 
 function beginGame(loaded = false) {
@@ -143,7 +145,7 @@ function renderPanel() {
   const content=$('panel-content');
   if(!content) return;
   const template={
-    overview:renderOverview, operations:renderOperations, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    overview:renderOverview, operations:renderOperations, atc:renderAtc, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
     employees:renderEmployees, passengers:renderPassengers, finances:renderFinances, contracts:renderContracts,
     research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
@@ -211,20 +213,48 @@ function renderBuild() {
   <div class="owned-building-list">${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=state.activeFlight?.gateId===building.id;return `<div class="owned-building-row"><div><b>${def?.icon||'🏗️'} ${building.name||def?.name||building.type}</b><small>${building.type==='gate'?'Aircraft stand':'Service facility'} · ${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="${building.id}" ${occupied?'disabled':''}>${occupied?'IN USE':`SELL · +${fmt(refund)}`}</button></div>`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
   <div class="info-note"><b>Construction tip</b><span>Gates belong on the apron. Other facilities belong in the marked service yard. Demolishing a building refunds 55% of its original purchase price. A gate cannot be removed while an aircraft is using it.</span></div>`;
 }
+function renderAtc() {
+  const flights=activeFlights();
+  const runway=flights.find(f=>['approach','landing-rollout','taxi-out','takeoff'].includes(f.phase));
+  const holding=flights.filter(f=>f.phase==='holding');
+  return `${panelHeader('AIR TRAFFIC CONTROL','ATC operations','Manage runway sequencing, arrival holding and stand clearances.')}
+    <div class="operations-hero"><div><small>RUNWAY 09 / 27</small><strong>${runway?'OCCUPIED · '+runway.id:'RUNWAY AVAILABLE'}</strong><span>${runway?flightPhaseLabel(runway.phase):'No aircraft on the runway'}</span></div><span class="operations-live-dot"></span></div>
+    <div class="content-card"><div class="card-heading"><h3>Controller mode</h3><span class="status-pill ${state.atcMode==='manual'?'warning':'active'}">${(state.atcMode||'auto').toUpperCase()}</span></div>
+      <p class="muted-label">Automatic mode clears the next eligible aircraft. Manual mode waits for your clearance.</p>
+      <div class="setting-actions"><button class="secondary-small" data-action="atc-mode" data-mode="auto" ${state.atcMode!=='manual'?'disabled':''}>AUTOMATIC ATC</button><button class="secondary-small" data-action="atc-mode" data-mode="manual" ${state.atcMode==='manual'?'disabled':''}>MANUAL CONTROL</button></div>
+    </div>
+    <div class="section-title"><h3>Arrival holding queue</h3><span class="muted-label">${holding.length} WAITING</span></div>
+    <div class="content-card">${holding.map(f=>'<div class="facility-row"><span><b>'+f.id+'</b> · '+f.airline+' · '+f.model+'</span><button class="secondary-small" data-clear-flight="'+f.id+'" '+(runway?'disabled':'')+'>CLEAR TO LAND</button></div>').join('')||'<div class="empty-state">No aircraft are waiting for an ATC clearance.</div>'}</div>
+    <div class="section-title"><h3>Live traffic</h3><span class="muted-label">${flights.length} ACTIVE</span></div>
+    <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRCRAFT</th><th>DESTINATION</th><th>STAND</th><th>PHASE</th></tr></thead><tbody>${flights.map(f=>'<tr><td><b>'+f.id+'</b></td><td>'+f.model+'</td><td>'+f.destination+'</td><td>'+(f.gateId==='initial-gate'?'01':f.gateId||'HOLD')+'</td><td>'+flightPhaseLabel(f.phase)+'</td></tr>').join('')||'<tr><td colspan="5" class="table-empty">No active movements.</td></tr>'}</tbody></table></div>
+    <div class="info-note"><b>Runway protection</b><span>The simulator prevents two aircraft from occupying runway phases simultaneously. Each arriving aircraft must also reserve an available stand before it receives an approach clearance.</span></div>`;
+}
+
 function renderFlights() {
-  const f=state.activeFlight;
-  return `${panelHeader('FLIGHT OPERATIONS','Flight board','Monitor arrivals, departures and aircraft turnaround.')}
-  ${f?`<div class="content-card active-flight-detail"><div class="card-heading"><h3>Current flight</h3><span class="status-pill active">${f.phase==='approach'?'ARRIVING':f.phase==='takeoff'?'DEPARTING':'ACTIVE'}</span></div><div class="large-flight-number">${f.id}</div><div class="flight-detail-grid"><div><small>AIRLINE</small><b>${f.airline}</b></div><div><small>AIRCRAFT</small><b>${f.model}</b></div><div><small>PASSENGERS</small><b>${f.passengers}</b></div><div><small>OPERATION</small><b>${flightPhaseLabel(f.phase)}</b></div></div></div>`:`<div class="empty-state">No flight is currently active. The next arrival is scheduled in ${Math.max(0,Math.ceil(state.nextFlightAt-state.gameMinutes))} game minutes.</div>`}
+  const flights=activeFlights(), queued=state.flightPlanQueue||[];
+  const activeRows=flights.map(f=>'<tr><td><b>'+f.id+'</b></td><td>'+f.airline+'</td><td>'+f.model+'</td><td>'+f.destination+'</td><td>'+(f.gateId==='initial-gate'?'01':f.gateId||'HOLD')+'</td><td><span class="status-pill active">'+flightPhaseLabel(f.phase)+'</span></td></tr>').join('');
+  const airlineOptions=FLIGHT_AIRLINES.map(name=>'<option value="'+name+'">'+name+'</option>').join('');
+  const aircraftOptions=FLIGHT_AIRCRAFT.map(item=>'<option value="'+item.id+'">'+item.model+'</option>').join('');
+  const destinationOptions=FLIGHT_DESTINATIONS.map(item=>'<option value="'+item.code+'">'+item.name+'</option>').join('');
+  return `${panelHeader('FLIGHT OPERATIONS','Flight board','Plan airline services, coordinate multiple aircraft and monitor runway sequencing.')}
+  <div class="content-card flight-planner-card"><div class="card-heading"><h3>Schedule a new flight</h3><span class="muted-label">INTERNATIONAL NETWORK</span></div>
+    <div class="flight-planner-grid"><label>Airline<select id="plan-airline">${airlineOptions}</select></label><label>Aircraft<select id="plan-aircraft">${aircraftOptions}</select></label><label>Destination<select id="plan-destination">${destinationOptions}</select></label></div>
+    <button class="primary-small" data-action="schedule-flight">＋ ADD TO FLIGHT SCHEDULE</button>
+    <small class="muted-label">Passenger airlines operate passenger aircraft; CargoLink and Northstar Freight operate freighters.</small></div>
+  <div class="section-title"><h3>Live aircraft movements</h3><span class="muted-label">${flights.length} ACTIVE · ${1+extraGates()} STANDS</span></div>
+  <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRLINE</th><th>AIRCRAFT</th><th>DESTINATION</th><th>STAND</th><th>ATC STATUS</th></tr></thead><tbody>${activeRows||'<tr><td colspan="6" class="table-empty">No active aircraft. Your next flight will appear here.</td></tr>'}</tbody></table></div>
+  <div class="section-title"><h3>Queued flight plans</h3><span class="muted-label">${queued.length} / 12 SLOTS</span></div>
+  <div class="content-card">${queued.map(plan=>'<div class="facility-row"><span><b>'+plan.airline+'</b> · '+plan.model+' to '+plan.destination+'</span><b>'+timeLabel(plan.scheduledAt)+'</b></div>').join('')||'<div class="empty-state">No manually planned services are queued.</div>'}</div>
   <div class="section-title"><h3>Recent flight activity</h3><span class="muted-label">LAST 20 FLIGHTS</span></div>
-  <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRLINE</th><th>AIRCRAFT</th><th>PAX</th><th>NET RESULT</th><th>STATUS</th></tr></thead><tbody>${state.flightHistory.map(f=>`<tr><td><b>${f.id}</b></td><td>${f.airline}</td><td>${f.model}</td><td>${f.passengers}</td><td class="${f.net>=0?'good-text':'bad-text'}">${fmtSigned(f.net)}</td><td><span class="status-pill">${f.status}</span></td></tr>`).join('')||'<tr><td colspan="6" class="table-empty">Your first flight is on its way.</td></tr>'}</tbody></table></div>
-  <div class="info-note"><b>Flight operations</b><span>Aircraft land on the runway, taxi to the gate, unload and board passengers, then taxi out and take off. Each completed flight affects airport finances and reputation.</span></div>`;
+  <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRLINE</th><th>AIRCRAFT</th><th>PAX</th><th>NET RESULT</th><th>STATUS</th></tr></thead><tbody>${state.flightHistory.map(f=>'<tr><td><b>'+f.id+'</b></td><td>'+f.airline+'</td><td>'+f.model+'</td><td>'+f.passengers+'</td><td class="'+(f.net>=0?'good-text':'bad-text')+'">'+fmtSigned(f.net)+'</td><td><span class="status-pill">'+f.status+'</span></td></tr>').join('')||'<tr><td colspan="6" class="table-empty">Your first flight is on its way.</td></tr>'}</tbody></table></div>
+  <div class="info-note"><b>ATC sequencing</b><span>Only one aircraft occupies the runway at a time. Incoming aircraft wait in the holding queue until a runway slot and an unoccupied stand are available. Each live aircraft keeps its own route and turnaround timer.</span></div>`;
 }
 function renderAircraft() {
-  const f=state.activeFlight;
-  return `${panelHeader('FLEET MANAGEMENT','Aircraft','Track the aircraft currently operating at your airport.')}
-  <div class="fleet-summary"><div><span>ACTIVE AIRCRAFT</span><b>${f?1:0}</b></div><div><span>FLIGHTS COMPLETED</span><b>${state.flightsCompleted}</b></div><div><span>AVAILABLE GATES</span><b>${1+extraGates()}</b></div></div>
-  ${f?`<div class="aircraft-card"><div class="aircraft-illustration">✈</div><div class="aircraft-details"><div class="flight-label">${f.airline} · ${f.id}</div><h3>${f.model}</h3><p>Regional passenger aircraft · ${f.passengers} seats booked</p><div class="aircraft-tags"><span>${flightPhaseLabel(f.phase)}</span><span>Gate ${f.gateId==='initial-gate'?'01':'02+'}</span></div></div></div>`:'<div class="empty-state">No aircraft on the apron right now. Your next scheduled arrival will appear here.</div>'}
-  <div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">AIR TRAFFIC TYPES</span></div><div class="catalogue-row"><div class="catalogue-icon">🛩️</div><div><b>ATR 72-600 / Dash 8 Q400</b><small>Regional turboprops · Short-haul passenger flights</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">✈️</div><div><b>Airbus A320neo / Boeing 737-800</b><small>Narrow-body passenger jets · Medium-haul routes</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">📦</div><div><b>Boeing 737-800F / Airbus A330F</b><small>Cargo aircraft · Freight loading and unloading</small></div><span class="status-pill active">IN TRAFFIC</span></div>`;
+  const flights=activeFlights();
+  return `${panelHeader('FLEET MANAGEMENT','Aircraft','Track every aircraft currently moving, parked or waiting for clearance.')}
+  <div class="fleet-summary"><div><span>ACTIVE AIRCRAFT</span><b>${flights.length}</b></div><div><span>FLIGHTS COMPLETED</span><b>${state.flightsCompleted}</b></div><div><span>AVAILABLE GATES</span><b>${1+extraGates()}</b></div></div>
+  ${flights.map(f=>'<div class="aircraft-card"><div class="aircraft-illustration">✈</div><div class="aircraft-details"><div class="flight-label">'+f.airline+' · '+f.id+'</div><h3>'+f.model+'</h3><p>'+(f.kind==='cargo'?f.cargoTons+' tonnes of freight':f.passengers+' passengers booked')+' · Destination '+f.destination+'</p><div class="aircraft-tags"><span>'+flightPhaseLabel(f.phase)+'</span><span>Stand '+(f.gateId==='initial-gate'?'01':f.gateId||'HOLD')+'</span></div></div></div>').join('')||'<div class="empty-state">No aircraft currently moving. The next arrival will be shown here.</div>'}
+  <div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">AIR TRAFFIC TYPES</span></div><div class="catalogue-row"><div class="catalogue-icon">🛩️</div><div><b>ATR 72-600 / Dash 8 Q400</b><small>Regional turboprops · Short-haul passenger flights</small></div><span class="status-pill active">AVAILABLE</span></div><div class="catalogue-row"><div class="catalogue-icon">✈️</div><div><b>Airbus A320neo / Boeing 737-800</b><small>Narrow-body passenger jets · Medium-haul routes</small></div><span class="status-pill active">AVAILABLE</span></div><div class="catalogue-row"><div class="catalogue-icon">📦</div><div><b>Boeing 737-800F / Airbus A330F</b><small>Cargo aircraft · Freight loading and unloading</small></div><span class="status-pill active">AVAILABLE</span></div>`;
 }
 function renderEmployees() {
   const roles=[['security','Security','🛂','Passenger screening and terminal safety'],['handling','Ground handling','🦺','Aircraft turnaround and baggage services'],['cleaning','Cleaning staff','🧹','Terminal cleanliness and comfort'],['maintenance','Maintenance','🔧','Runway and facility reliability'],['cargo','Cargo handlers','📦','Freight loading, warehouse and cargo turnaround']];
@@ -261,6 +291,7 @@ function renderFinances() {
     ['Base airport operations', expenseParts.baseOperations],
     ['Building maintenance', expenseParts.buildingMaintenance],
     ['Runway wear & maintenance', expenseParts.runwayMaintenance],
+    ['Loan interest', expenseParts.loanInterest || 0],
   ];
   return `${panelHeader('AIRPORT ECONOMY','Finances','See every recurring payment and watch the money actually enter or leave your airport account.')}
   <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} net per game hour · automatically paid</span></div><div class="balance-icon">€</div></div>
@@ -270,6 +301,18 @@ function renderFinances() {
   <div class="content-card"><div class="card-heading"><h3>Operating expenses</h3><span class="muted-label">PER GAME HOUR</span></div>${expenseLabels.map(([label,value])=>`<div class="facility-row"><span>${label}</span><b class="bad-text">−${fmt(value)}</b></div>`).join('')}<div class="facility-row"><span><b>Net recurring result</b></span><b class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)}</b></div></div>
   <div class="content-card chart-card"><div class="card-heading"><h3>Recent flight performance</h3><span class="muted-label">PER COMPLETED FLIGHT</span></div><div class="chart-legend"><span><i class="legend-income"></i> Revenue</span><span><i class="legend-expense"></i> Expenses</span></div><div class="bar-chart">${history.map(h=>`<div class="bar-group"><div class="bar-pair"><i class="bar-income" style="height:${Math.max(2,h.income/max*100)}%" title="Revenue ${fmt(h.income)}"></i><i class="bar-expense" style="height:${Math.max(2,h.expenses/max*100)}%" title="Expenses ${fmt(h.expenses)}"></i></div><small>${h.label}</small></div>`).join('')||'<div class="empty-state">Complete a flight to start building your financial history.</div>'}</div></div>
   <div class="maintenance-card"><div><small>RUNWAY SURFACE CONDITION</small><strong>${Math.round(state.runwayCondition ?? 100)}%</strong><p>Landings wear the asphalt. Repair the surface to keep maintenance costs under control.</p><div class="satisfaction-bar"><i style="width:${state.runwayCondition ?? 100}%"></i></div></div><button class="primary-small" data-action="repair-runway" ${(state.runwayCondition ?? 100) >= 99 ? 'disabled' : ''}>REPAIR · ${fmt(Math.round((100-(state.runwayCondition ?? 100))*140+250))}</button></div>
+  <div class="content-card"><div class="card-heading"><h3>Airport financing</h3><span class="muted-label">BANK FACILITIES</span></div>
+    <div class="facility-row"><span>Outstanding loan balance</span><b>${fmt(state.loanDebt||0)}</b></div>
+    <div class="facility-row"><span>Financing interest</span><b class="bad-text">${fmt(expenseParts.loanInterest||0)} / game hour</b></div>
+    <div class="setting-actions"><button class="secondary-small" data-action="take-loan" data-amount="50000">BORROW €50,000</button><button class="secondary-small" data-action="take-loan" data-amount="100000">BORROW €100,000</button><button class="secondary-small" data-action="repay-loan">REPAY €10,000</button></div>
+    <div class="section-title"><h3>Airport investments</h3><span class="muted-label">7-DAY TERM · 8% RETURN</span></div>
+    <div class="facility-row"><span>Active investments</span><b>${(state.investments||[]).length}</b></div>
+    <div class="setting-actions"><button class="secondary-small" data-action="invest" data-amount="5000">INVEST €5,000</button><button class="secondary-small" data-action="invest" data-amount="10000">INVEST €10,000</button><button class="secondary-small" data-action="invest" data-amount="25000">INVEST €25,000</button></div>
+    <div class="facility-row"><span>Taxes paid to date</span><b>${fmt(state.taxesPaid||0)}</b></div>
+    <small class="save-detail">Tax is 12% of positive daily operating profit. Three consecutive in-game days with negative cash trigger insolvency and pause the simulation.</small>
+    ${(state.investments||[]).map(item=>'<div class="facility-row"><span>'+item.label+' · matures '+timeLabel(item.matureAt)+'</span><b>'+fmt(item.returnValue)+'</b></div>').join('')}
+  </div>
+  ${state.bankrupt?'<div class="incident-card"><b>Airport insolvent</b><p>The airport has reached the insolvency threshold. Secure financing or reduce operating costs before resuming.</p></div>':''}
   <div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>`;
 }
 function renderResearch() {
@@ -361,7 +404,7 @@ function refreshHUD() {
   $('xp-next').textContent=`NEXT: LEVEL ${state.level+1}`;
   $('xp-fill').style.width=`${Math.min(100,state.xp/(state.level*500)*100)}%`;
   document.querySelectorAll('.speed-button').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===state.speed));
-  world.syncFlight(state.activeFlight); world.setTimeOfDay(state.gameMinutes);
+  world.syncFlights(activeFlights()); world.setTimeOfDay(state.gameMinutes);
 }
 
 
@@ -405,6 +448,52 @@ function handlePanelClick(e) {
   const research=e.target.closest('[data-research]');if(research){const r=RESEARCH.find(x=>x.id===research.dataset.research);if(!r||state.research.includes(r.id)||state.researchInProgress)return;if(state.money<r.cost){notifyLocal('Not enough funds',`Research requires ${fmt(r.cost)}.`,'warning');return;}addMoney(state,-r.cost);state.researchInProgress={id:r.id,remaining:r.duration};notifyLocal('Research started',`${r.name} is now in development.`,'success');renderPanel();refreshHUD();return;}
   const claim=e.target.closest('[data-claim]');if(claim){const m=MISSION_DEFS.find(x=>x.id===claim.dataset.claim);if(!m||state.missionsClaimed.includes(m.id)||missionProgress(m)<m.goal)return;state.missionsClaimed.push(m.id);addMoney(state,m.reward);giveXP(state,m.xp);notifyLocal('Mission completed',`${m.title}: ${fmt(m.reward)} and ${m.xp} XP earned.`,'success');renderPanel();refreshHUD();return;}
 
+  const atcModeButton=e.target.closest('[data-action="atc-mode"]');
+  if(atcModeButton){
+    state.atcMode=atcModeButton.dataset.mode==='manual'?'manual':'auto';
+    notifyLocal('ATC mode changed',state.atcMode==='manual'?'Manual clearance enabled. Waiting aircraft need controller approval.':'Automatic runway sequencing enabled.','info');
+    renderPanel();saveNow(false);return;
+  }
+  const clearFlightButton=e.target.closest('[data-clear-flight]');
+  if(clearFlightButton){
+    const result=clearFlightForApproach(state,clearFlightButton.dataset.clearFlight);
+    if(!result.ok){
+      const message=result.reason==='runway-busy'?'The runway is currently occupied.':'No free aircraft stand is available.';
+      notifyLocal('Landing clearance refused',message,'warning');
+    }else notifyLocal('Landing clearance issued',clearFlightButton.dataset.clearFlight+' cleared to land and assigned stand '+(result.gateId==='initial-gate'?'01':result.gateId)+'.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+
+  const scheduleFlight=e.target.closest('[data-action="schedule-flight"]');
+  if(scheduleFlight){
+    const result=createFlightPlan(state,{airline:$('plan-airline')?.value,aircraft:$('plan-aircraft')?.value,destination:$('plan-destination')?.value});
+    if(!result.ok)notifyLocal('Flight plan rejected',result.reason,'warning');
+    else notifyLocal('Flight added to schedule',result.plan.airline+' '+result.plan.model+' to '+result.plan.destination+' is planned for '+timeLabel(result.plan.scheduledAt)+'.','success');
+    renderPanel();saveNow(false);return;
+  }
+  const loanButton=e.target.closest('[data-action="take-loan"]');
+  if(loanButton){
+    const result=takeLoan(state,Number(loanButton.dataset.amount));
+    if(!result.ok)notifyLocal('Loan unavailable','The requested loan amount is not valid.','warning');
+    else notifyLocal('Loan approved',fmt(result.amount)+' added to airport cash. Outstanding debt: '+fmt(result.debt)+'.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+  const repayButton=e.target.closest('[data-action="repay-loan"]');
+  if(repayButton){
+    const amount=Math.min(10000,Number(state.loanDebt)||0);
+    const result=repayLoan(state,amount);
+    if(!result.ok)notifyLocal('Repayment unavailable',result.reason==='funds'?'The airport does not have enough cash for this repayment.':'There is no repayable loan balance.','warning');
+    else notifyLocal('Loan repayment completed',fmt(result.amount)+' repaid. Remaining debt: '+fmt(result.debt)+'.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+  const investButton=e.target.closest('[data-action="invest"]');
+  if(investButton){
+    const result=createInvestment(state,Number(investButton.dataset.amount));
+    if(!result.ok)notifyLocal('Investment unavailable',result.reason==='funds'?'Not enough available cash.':'Choose a supported investment amount.','warning');
+    else notifyLocal('Investment started',fmt(result.amount)+' invested. Expected return after seven in-game days.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+
   const contractButton=e.target.closest('[data-accept-contract]');
   if(contractButton){
     const contract=CONTRACT_DEFS.find(item=>item.id===contractButton.dataset.acceptContract);
@@ -420,7 +509,7 @@ function handlePanelClick(e) {
   if(demolish){
     const building=state.buildings.find(item=>item.id===demolish.dataset.demolish);
     if(!building)return;
-    if(state.activeFlight?.gateId===building.id){notifyLocal('Gate in use','Wait until the aircraft has departed before removing this gate.','warning');return;}
+    if(activeFlights().some(flight=>flight.gateId===building.id)){notifyLocal('Gate in use','Wait until the aircraft has departed before removing this gate.','warning');return;}
     const dependentContract=(state.activeContracts||[]).find(contract=>contract.requiredBuilding===building.type);
     if(dependentContract){
       notifyLocal('Facility required by contract',`Complete or cancel ${dependentContract.name} before selling this facility.`,'warning');
@@ -541,7 +630,7 @@ function animate(now) {
     if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(['missions','overview','flights','operations','contracts','finances'].includes(currentTab))renderPanel();state._lastPanelTick=state.gameMinutes;}
     if(oldWeather!==state.weather)world.setWeather(state.weather);
     world.setTimeOfDay(state.gameMinutes);
-    world.syncFlight(state.activeFlight);
+    world.syncFlights(activeFlights());
     if(now-lastAutosave>10000){saveNow(false);lastAutosave=now;}
     if(now%400<18)refreshHUD();
   }

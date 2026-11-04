@@ -1,10 +1,10 @@
 import { getPlacementStatus } from './placement.js';
 
-const SAVE_KEY = 'airport-tycoon-save-v3';
-const LEGACY_SAVE_KEYS = ['airport-tycoon-save-v2', 'airport-tycoon-save-v1'];
+const SAVE_KEY = 'airport-tycoon-save-v4';
+const LEGACY_SAVE_KEYS = ['airport-tycoon-save-v3', 'airport-tycoon-save-v2', 'airport-tycoon-save-v1'];
 
 export function saveGame(state) {
-  const snapshot = { ...state, version: 3, speed: 1, lastSavedAt: Date.now(), lastRealTime: Date.now() };
+  const snapshot = { ...state, version: 4, speed: 1, lastSavedAt: Date.now(), lastRealTime: Date.now() };
   localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
   return snapshot.lastSavedAt;
 }
@@ -79,14 +79,38 @@ function migrateV3(parsed) {
   };
 }
 
+function migrateV4(parsed) {
+  const activeFlights = Array.isArray(parsed.activeFlights)
+    ? parsed.activeFlights
+    : (parsed.activeFlight ? [parsed.activeFlight] : []);
+  return {
+    ...parsed,
+    version: 4,
+    atcMode: parsed.atcMode === 'manual' ? 'manual' : 'auto',
+    activeFlights,
+    activeFlight: activeFlights[0] || null,
+    nextFlightNumber: Math.max(1, Number(parsed.nextFlightNumber) || (Number(parsed.flightsCompleted) || 0) + activeFlights.length + 1),
+    flightPlanQueue: Array.isArray(parsed.flightPlanQueue) ? parsed.flightPlanQueue : [],
+    loanDebt: Math.max(0, Number(parsed.loanDebt) || 0),
+    loanHistory: Array.isArray(parsed.loanHistory) ? parsed.loanHistory : [],
+    investments: Array.isArray(parsed.investments) ? parsed.investments : [],
+    taxesPaid: Math.max(0, Number(parsed.taxesPaid) || 0),
+    insolvencyDays: Math.max(0, Number(parsed.insolvencyDays) || 0),
+    bankrupt: Boolean(parsed.bankrupt),
+    _dailyProfit: Number(parsed._dailyProfit) || 0,
+    _taxDay: Number.isInteger(parsed._taxDay) ? parsed._taxDay : Math.floor((parsed.gameMinutes || 0) / 1440)
+  };
+}
+
 export function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY) || LEGACY_SAVE_KEYS.map(key => localStorage.getItem(key)).find(Boolean);
     if (!raw) return null;
     let parsed = JSON.parse(raw);
-    if (!parsed || ![1, 2, 3].includes(parsed.version) || typeof parsed.money !== 'number' || !Array.isArray(parsed.buildings)) return null;
+    if (!parsed || ![1, 2, 3, 4].includes(parsed.version) || typeof parsed.money !== 'number' || !Array.isArray(parsed.buildings)) return null;
     if (parsed.version === 1) parsed = migrateV1(parsed);
-    parsed = migrateV3(parsed);
+    if (parsed.version <= 3) parsed = migrateV3(parsed);
+    parsed = migrateV4(parsed);
     const elapsedHours = Math.max(0, Math.min(8, (Date.now() - (parsed.lastRealTime || Date.now())) / 3600000));
     if (elapsedHours > .01) {
       const staffCost = Object.values(parsed.staff || {}).reduce((a, b) => a + b, 0) * 32;
@@ -95,7 +119,7 @@ export function loadGame() {
       parsed.offlineEarnings = Math.floor(hourlyNet * elapsedHours * .35);
       parsed.money += parsed.offlineEarnings;
     }
-    parsed.version = 3;
+    parsed.version = 4;
     parsed.lastRealTime = Date.now();
     return parsed;
   } catch {

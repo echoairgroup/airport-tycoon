@@ -23,12 +23,13 @@ export const RESEARCH = [
 ];
 
 export const INITIAL_STATE = () => ({
-  version: 3, money: 75000, level: 1, xp: 0, reputation: 50, satisfaction: 82,
+  version: 4, money: 75000, level: 1, xp: 0, reputation: 50, satisfaction: 82,
   passengers: 0, totalPassengers: 0, cargoTonsHandled: 0, runwayCondition: 100, gameMinutes: 8 * 60, speed: 1, weather: 'Sunny',
   buildings: [], staff: { security: 2, handling: 3, cleaning: 1, maintenance: 1, cargo: 1 },
   research: [], researchInProgress: null, missionsClaimed: [], flightsCompleted: 0, flightsCancelled: 0,
   lifetimeRevenue: 0, lifetimeExpenses: 0, retailIncome: 0, parkingIncome: 0,
-  flightHistory: [], notifications: [], nextFlightAt: 8 * 60 + 1, activeFlight: null,
+  flightHistory: [], notifications: [], nextFlightAt: 8 * 60 + 1, activeFlight: null, activeFlights: [],
+  nextFlightNumber: 1, flightPlanQueue: [], loanDebt: 0, loanHistory: [], investments: [], taxesPaid: 0, insolvencyDays: 0, bankrupt: false, atcMode: 'auto', _dailyProfit: 0, _taxDay: 0,
   activeContracts: [], completedContracts: [], contractsCompleted: 0, contractIncome: 0,
   activeIncident: null, nextIncidentAt: 8 * 60 + 90,
   stats: { constructions: 0, incidents: 0, incidentsResolved: 0, takeoffs: 0, landings: 0, peakPassengers: 0 },

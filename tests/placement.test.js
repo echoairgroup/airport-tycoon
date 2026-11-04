@@ -9,11 +9,11 @@ test('allows a facility on a clear service-yard plot', () => {
   assert.equal(getPlacementStatus('cafe', 0, 39).valid, true);
 });
 test('allows construction across the expanded service yard', () => {
-  assert.equal(getPlacementStatus('cafe', 72, 82).valid, true);
+  assert.equal(getPlacementStatus('cafe', 132, 162).valid, true);
 });
 
 test('blocks construction beyond the expanded airport boundary', () => {
-  const result = getPlacementStatus('parking', 96, 82);
+  const result = getPlacementStatus('parking', 160, 82);
   assert.equal(result.valid, false);
   assert.match(result.reason, /Outside airport boundary/i);
 });
@@ -68,7 +68,7 @@ test('blocks a gate on top of the initial Gate 01 stand', () => {
 });
 
 test('blocks a facility whose footprint leaves the service yard boundary', () => {
-  const result = getPlacementStatus('parking', 96, 39);
+  const result = getPlacementStatus('parking', 160, 39);
   assert.equal(result.valid, false);
   assert.match(result.reason, /boundary/i);
 });
@@ -157,4 +157,14 @@ test('airline contracts progress and pay out on a matching flight', () => {
   assert.equal(state.activeContracts.length, 0);
   assert.equal(state.contractsCompleted, 1);
   assert.ok(state.money >= 87500);
+});
+
+test('allows construction deep into the expanded airport campus', () => {
+  assert.equal(getPlacementStatus('cafe', -132, 162).valid, true);
+});
+
+test('blocks a facility beyond the expanded airport campus boundary', () => {
+  const result = getPlacementStatus('parking', 160, 162);
+  assert.equal(result.valid, false);
+  assert.match(result.reason, /Outside airport boundary/i);
 });
