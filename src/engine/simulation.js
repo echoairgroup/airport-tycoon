@@ -117,7 +117,7 @@ function startFlight(state, planned = null) {
   state.nextFlightNumber = sequence + 1;
   flights.push(flight);
   const firstAvailable = availableGate(state);
-  if (firstAvailable && !isRunwayOccupied(state, flight.id)) assignApproach(state, flight, firstAvailable);
+  if (firstAvailable && !isRunwayOccupied(state, flight.id) && state.atcMode !== 'manual') assignApproach(state, flight, firstAvailable);
   else notify(state, 'Aircraft in holding', `${flight.airline} ${flight.id} is holding for runway and stand capacity.`, 'flight');
   syncPrimaryFlight(state);
   return flight;
