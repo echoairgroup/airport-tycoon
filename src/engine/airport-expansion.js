@@ -264,7 +264,7 @@ export function tickAirportExpansion(state,gameDelta,callbacks={}){
    if(!step){flight.phase='ready-departure';flight.timer=0;notify(callbacks,'Turnaround complete',flight.id+' is ready for departure clearance.','success');}
    else{
     if(!flight.serviceRemaining){
-     const workers=Number(state.staff?.[step.role])||0,efficiency=Math.max(.62,.78+workers*.08+(state.research.includes('fast-handling')?.15:0));
+     const workers=Number(state.staff?.[step.role])||0,efficiency=Math.max(.62,.78+workers*.08+(state.research.includes('fast-handling') ? .15 : 0));
      flight.serviceRemaining=step.duration/efficiency;flight.currentService=step.label;
     }
     flight.serviceRemaining-=gameDelta;

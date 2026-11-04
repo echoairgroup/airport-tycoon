@@ -4,6 +4,15 @@ import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney } from './engine/economy.js';
 import { tickGame, flightPhaseLabel, giveXP, resolveIncident } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
+import { settleFlight } from './engine/economy.js';
+import { progressContracts } from './engine/simulation.js';
+import {
+  AIRPORT_DESTINATIONS, AIRLINE_CATALOG, AIRCRAFT_CATALOG, INVESTMENT_OPTIONS, CAMPAIGN_CHAPTERS,
+  tickAirportExpansion, flightExpansionPhaseLabel, addFlightSchedule, setAtcMode, grantAtcClearance,
+  buyLandExpansion, getNextLandExpansionCost, takeAirportLoan, repayAirportLoan, makeAirportInvestment,
+  claimCampaignChapter, setGameMode
+} from './engine/airport-expansion.js';
+import { isAirportAudioEnabled, setAirportAudioEnabled, playAirportSound } from './engine/audio.js';
 
 let state = INITIAL_STATE();
 let world;
@@ -31,7 +40,9 @@ function bootWorld() {
   world.addInitialGate();
   for (const building of state.buildings) world.addBuilding(building);
   world.setWeather(state.weather);
+  world.setBuildRadius(state.expansion?.world?.buildRadius || 90);
   world.syncFlight(state.activeFlight);
+  world.syncTrafficFlights(state.expansion?.activeFlights || []);
 }
 
 function beginGame(loaded = false) {
@@ -100,17 +111,17 @@ function onWorldHover(pos) {
 }
 
 function getPlacementStatus(type, x, z) {
-  return validatePlacement(type, x, z, state.buildings);
+  return validatePlacement(type, x, z, state.buildings, { buildRadius: state.expansion?.world?.buildRadius || 90 });
 }
 
 function onWorldClick(pos) {
   if (!selectedBuild) return;
   const item=BUILDINGS.find(b=>b.id===selectedBuild);
   if(!item) return;
-  if(state.level<item.level){notifyLocal('Building locked',`Reach airport level ${item.level} to unlock ${item.name}.`,'warning');return;}
-  if(state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} more to build ${item.name}.`,'warning');return;}
+  if(!isSandbox()&&state.level<item.level){notifyLocal('Building locked',`Reach airport level ${item.level} to unlock ${item.name}.`,'warning');return;}
+  if(!isSandbox()&&state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} more to build ${item.name}.`,'warning');return;}
   const placement = getPlacementStatus(selectedBuild, pos.x, pos.z); if(!placement.valid){notifyLocal('Cannot build here', placement.reason + '. Move the preview to a clear plot.','warning');return;}
-  addMoney(state,-item.cost);
+  if(!isSandbox())addMoney(state,-item.cost);
   const building={id:`b-${Date.now()}-${Math.floor(Math.random()*1000)}`,type:item.id,x:pos.x,z:pos.z,upkeep:item.upkeep,name:item.name};
   state.buildings.push(building); state.stats.constructions++; giveXP(state,item.xp);
   world.addBuilding(building);
@@ -133,8 +144,8 @@ function togglePanel() {
 function openBuild(type) {
   const item=BUILDINGS.find(b=>b.id===type); if(!item) return;
   $('panel').classList.remove('collapsed'); panelOpen = true; $('panel-toggle').textContent = '‹';
-  if(state.level<item.level){notifyLocal('Locked',`${item.name} unlocks at level ${item.level}.`,'warning');return;}
-  if(state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} to build this.`,'warning');return;}
+  if(!isSandbox()&&state.level<item.level){notifyLocal('Locked',`${item.name} unlocks at level ${item.level}.`,'warning');return;}
+  if(!isSandbox()&&state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} to build this.`,'warning');return;}
   selectedBuild=type; world.setPlacement(type, item.footprint || [8,8]); $('world-hint').classList.remove('hidden'); $('hint-text').textContent=`${item.name} selected · Green preview = valid plot`; notifyLocal('Placement mode',`Click an open area to place ${item.name}. Press Esc to cancel.`,'info');
 }
 function cancelBuild() { selectedBuild=null; world?.clearPlacement(); $('world-hint').classList.add('hidden'); }
@@ -144,6 +155,7 @@ function renderPanel() {
   if(!content) return;
   const template={
     overview:renderOverview, operations:renderOperations, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    network:renderNetwork, atc:renderAtc, terminal:renderTerminal, campaign:renderCampaign, multiplayer:renderMultiplayer,
     employees:renderEmployees, passengers:renderPassengers, finances:renderFinances, contracts:renderContracts,
     research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
@@ -171,7 +183,8 @@ function renderIncidentCard() {
 function renderOperations() {
   const condition = Math.round(state.runwayCondition ?? 100);
   const conditionLabel = condition >= 85 ? 'Excellent' : condition >= 65 ? 'Serviceable' : condition >= 45 ? 'Worn' : 'Critical';
-  const status = state.activeFlight ? flightPhaseLabel(state.activeFlight.phase) : 'No active aircraft';
+  const firstExpansionFlight = state.expansion?.activeFlights?.[0];
+  const status = firstExpansionFlight ? flightExpansionPhaseLabel(firstExpansionFlight.phase) : state.activeFlight ? flightPhaseLabel(state.activeFlight.phase) : 'No active aircraft';
   const capacities = [
     ['Passenger processing', 120 + state.buildings.filter(b => b.type === 'terminal').length * 100, 'passengers'],
     ['Aircraft stands', 1 + extraGates(), 'gates'],
@@ -190,7 +203,7 @@ function renderOperations() {
 }
 
 function renderOverview() {
-  const f=state.activeFlight;
+  const f=state.expansion?.activeFlights?.[0] || state.activeFlight;
   const objective=state.missionsClaimed.length>=MISSION_DEFS.length?'All starter missions complete':MISSION_DEFS.find(m=>!state.missionsClaimed.includes(m.id))?.title||'Expand your airport';
   return `${panelHeader('AIRPORT CONTROL','Airport overview','A live snapshot of your airport operations.',`<button class="small-action" data-action="focus">◎ Focus airport</button>`)}
   <div class="stat-grid">${statCard('AIRPORT RATING',`${Math.round(state.reputation)}%`,'Public reputation','★','purple')}${statCard('PASSENGERS ON SITE',Math.floor(state.passengers).toLocaleString('en-GB'),'Currently in your airport','♙','teal')}${statCard('FLIGHTS COMPLETED',state.flightsCompleted,'Successful departures','✈','orange')}</div>
@@ -205,34 +218,56 @@ function renderBuild() {
   const cats=['All','Operations','Passenger','Transport','Safety','Infrastructure','Logistics'];
   const items=BUILDINGS.filter(b=>(selectedCategory==='All'||b.category===selectedCategory));
   return `${panelHeader('AIRPORT DEVELOPMENT','Build & expand','Choose from the expanded construction campus behind the terminal. Buildings have real footprints and cannot overlap infrastructure or other facilities.',`<button class="small-action" data-action="cancel-build">✕ Cancel placement</button>`)}
+  ${renderLandExpansionCard()}
   <div class="category-tabs">${cats.map(c=>`<button class="category-tab ${selectedCategory===c?'active':''}" data-category="${c}">${c}</button>`).join('')}</div>
-  <div class="build-list">${items.map(b=>{const locked=state.level<b.level;const active=selectedBuild===b.id;return `<div class="build-card ${locked?'locked':''} ${active?'selected':''}"><div class="build-icon">${b.icon}</div><div class="build-info"><div class="build-title-row"><b>${b.name}</b>${locked?`<span class="lock-label">LVL ${b.level}</span>`:`<span class="available-label">AVAILABLE</span>`}</div><p>${b.description}</p><div class="build-meta"><span>↗ ${fmt(b.cost)}</span><span>⌁ ${fmt(b.upkeep)}/hr</span><span>⌂ ${b.category}</span></div></div><button class="build-select ${active?'chosen':''}" data-build="${b.id}" ${locked?'disabled':''}>${locked?'LOCKED':active?'SELECTED':'PLACE'}</button></div>`;}).join('')}</div>
+  <div class="build-list">${items.map(b=>{const locked=!isSandbox()&&state.level<b.level;const active=selectedBuild===b.id;return `<div class="build-card ${locked?'locked':''} ${active?'selected':''}"><div class="build-icon">${b.icon}</div><div class="build-info"><div class="build-title-row"><b>${b.name}</b>${locked?`<span class="lock-label">LVL ${b.level}</span>`:`<span class="available-label">AVAILABLE</span>`}</div><p>${b.description}</p><div class="build-meta"><span>↗ ${fmt(b.cost)}</span><span>⌁ ${fmt(b.upkeep)}/hr</span><span>⌂ ${b.category}</span></div></div><button class="build-select ${active?'chosen':''}" data-build="${b.id}" ${locked?'disabled':''}>${locked?'LOCKED':active?'SELECTED':'PLACE'}</button></div>`;}).join('')}</div>
   <div class="section-title"><h3>Your facilities</h3><span class="muted-label">${state.buildings.length} BUILT · 55% REFUND</span></div>
-  <div class="owned-building-list">${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=state.activeFlight?.gateId===building.id;return `<div class="owned-building-row"><div><b>${def?.icon||'🏗️'} ${building.name||def?.name||building.type}</b><small>${building.type==='gate'?'Aircraft stand':'Service facility'} · ${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="${building.id}" ${occupied?'disabled':''}>${occupied?'IN USE':`SELL · +${fmt(refund)}`}</button></div>`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
+  <div class="owned-building-list">${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=state.activeFlight?.gateId===building.id || (state.expansion?.activeFlights||[]).some(f=>f.gateId===building.id);return `<div class="owned-building-row"><div><b>${def?.icon||'🏗️'} ${building.name||def?.name||building.type}</b><small>${building.type==='gate'?'Aircraft stand':'Service facility'} · ${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="${building.id}" ${occupied?'disabled':''}>${occupied?'IN USE':`SELL · +${fmt(refund)}`}</button></div>`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
   <div class="info-note"><b>Construction tip</b><span>Gates belong on the apron. Other facilities belong in the marked service yard. Demolishing a building refunds 55% of its original purchase price. A gate cannot be removed while an aircraft is using it.</span></div>`;
 }
 function renderFlights() {
-  const f=state.activeFlight;
-  return `${panelHeader('FLIGHT OPERATIONS','Flight board','Monitor arrivals, departures and aircraft turnaround.')}
-  ${f?`<div class="content-card active-flight-detail"><div class="card-heading"><h3>Current flight</h3><span class="status-pill active">${f.phase==='approach'?'ARRIVING':f.phase==='takeoff'?'DEPARTING':'ACTIVE'}</span></div><div class="large-flight-number">${f.id}</div><div class="flight-detail-grid"><div><small>AIRLINE</small><b>${f.airline}</b></div><div><small>AIRCRAFT</small><b>${f.model}</b></div><div><small>PASSENGERS</small><b>${f.passengers}</b></div><div><small>OPERATION</small><b>${flightPhaseLabel(f.phase)}</b></div></div></div>`:`<div class="empty-state">No flight is currently active. The next arrival is scheduled in ${Math.max(0,Math.ceil(state.nextFlightAt-state.gameMinutes))} game minutes.</div>`}
-  <div class="section-title"><h3>Recent flight activity</h3><span class="muted-label">LAST 20 FLIGHTS</span></div>
-  <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRLINE</th><th>AIRCRAFT</th><th>PAX</th><th>NET RESULT</th><th>STATUS</th></tr></thead><tbody>${state.flightHistory.map(f=>`<tr><td><b>${f.id}</b></td><td>${f.airline}</td><td>${f.model}</td><td>${f.passengers}</td><td class="${f.net>=0?'good-text':'bad-text'}">${fmtSigned(f.net)}</td><td><span class="status-pill">${f.status}</span></td></tr>`).join('')||'<tr><td colspan="6" class="table-empty">Your first flight is on its way.</td></tr>'}</tbody></table></div>
-  <div class="info-note"><b>Flight operations</b><span>Aircraft land on the runway, taxi to the gate, unload and board passengers, then taxi out and take off. Each completed flight affects airport finances and reputation.</span></div>`;
+  const flights = [...(state.expansion?.activeFlights || []), ...(state.activeFlight ? [state.activeFlight] : [])];
+  return panelHeader('FLIGHT OPERATIONS','Flight board','Live arrivals, departures, holding aircraft and ground-service turnarounds.') +
+    '<div class="fleet-summary"><div><span>LIVE AIRCRAFT</span><b>' + flights.length + '</b></div><div><span>FLIGHTS COMPLETED</span><b>' + state.flightsCompleted + '</b></div><div><span>AVAILABLE STANDS</span><b>' + (1 + extraGates()) + '</b></div></div>' +
+    (flights.length ? '<div class="traffic-list">' + flights.map(f => '<article class="traffic-card"><div class="traffic-card-top"><b>' + f.id + '</b><span class="status-pill active">' + flightExpansionPhaseLabel(f.phase) + '</span></div><h3>' + f.airline + ' · ' + f.model + '</h3><div class="traffic-card-meta"><span>To ' + f.destination + '</span><span>' + f.passengers + ' pax</span><span>' + (f.gateId ? (f.gateId === 'initial-gate' ? 'Gate 01' : 'Stand assigned') : 'Holding') + '</span></div><small>' + (f.currentService || 'Live operation') + '</small></article>').join('') + '</div>' : '<div class="empty-state">No aircraft are currently active. Scheduled routes are shown in Network.</div>') +
+    '<div class="section-title"><h3>Recent flight activity</h3><span class="muted-label">LAST 20 FLIGHTS</span></div>' +
+    '<div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRLINE</th><th>AIRCRAFT</th><th>PAX</th><th>NET RESULT</th><th>STATUS</th></tr></thead><tbody>' +
+    (state.flightHistory.map(f => '<tr><td><b>' + f.id + '</b></td><td>' + f.airline + '</td><td>' + f.model + '</td><td>' + f.passengers + '</td><td class="' + (f.net>=0?'good-text':'bad-text') + '">' + fmtSigned(f.net) + '</td><td><span class="status-pill">' + f.status + '</span></td></tr>').join('') || '<tr><td colspan="6" class="table-empty">Your first flight is on its way.</td></tr>') +
+    '</tbody></table></div>';
 }
 function renderAircraft() {
-  const f=state.activeFlight;
-  return `${panelHeader('FLEET MANAGEMENT','Aircraft','Track the aircraft currently operating at your airport.')}
-  <div class="fleet-summary"><div><span>ACTIVE AIRCRAFT</span><b>${f?1:0}</b></div><div><span>FLIGHTS COMPLETED</span><b>${state.flightsCompleted}</b></div><div><span>AVAILABLE GATES</span><b>${1+extraGates()}</b></div></div>
-  ${f?`<div class="aircraft-card"><div class="aircraft-illustration">✈</div><div class="aircraft-details"><div class="flight-label">${f.airline} · ${f.id}</div><h3>${f.model}</h3><p>Regional passenger aircraft · ${f.passengers} seats booked</p><div class="aircraft-tags"><span>${flightPhaseLabel(f.phase)}</span><span>Gate ${f.gateId==='initial-gate'?'01':'02+'}</span></div></div></div>`:'<div class="empty-state">No aircraft on the apron right now. Your next scheduled arrival will appear here.</div>'}
-  <div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">AIR TRAFFIC TYPES</span></div><div class="catalogue-row"><div class="catalogue-icon">🛩️</div><div><b>ATR 72-600 / Dash 8 Q400</b><small>Regional turboprops · Short-haul passenger flights</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">✈️</div><div><b>Airbus A320neo / Boeing 737-800</b><small>Narrow-body passenger jets · Medium-haul routes</small></div><span class="status-pill active">IN TRAFFIC</span></div><div class="catalogue-row"><div class="catalogue-icon">📦</div><div><b>Boeing 737-800F / Airbus A330F</b><small>Cargo aircraft · Freight loading and unloading</small></div><span class="status-pill active">IN TRAFFIC</span></div>`;
+  const flights = state.expansion?.activeFlights || [];
+  const fleet = flights.length + (state.activeFlight ? 1 : 0);
+  return panelHeader('FLEET MANAGEMENT','Aircraft','Passenger jets, regional turboprops and cargo aircraft currently using your airport.') +
+    '<div class="fleet-summary"><div><span>ACTIVE AIRCRAFT</span><b>' + fleet + '</b></div><div><span>FLIGHTS COMPLETED</span><b>' + state.flightsCompleted + '</b></div><div><span>AVAILABLE GATES</span><b>' + (1 + extraGates()) + '</b></div></div>' +
+    (flights.length ? flights.map(f => '<div class="aircraft-card"><div class="aircraft-illustration">✈</div><div class="aircraft-details"><div class="flight-label">' + f.airline + ' · ' + f.id + '</div><h3>' + f.model + '</h3><p>' + (f.kind==='cargo'?'Freighter · '+f.cargoTons+' tonnes planned':'Passenger aircraft · '+f.passengers+' passengers planned') + '</p><div class="aircraft-tags"><span>' + flightExpansionPhaseLabel(f.phase) + '</span><span>' + f.destination + '</span></div></div></div>').join('') : '<div class="empty-state">No scheduled aircraft are currently moving. Add services in Network.</div>') +
+    '<div class="section-title"><h3>Aircraft catalogue</h3><span class="muted-label">AVAILABLE TYPES</span></div>' +
+    AIRCRAFT_CATALOG.map(a => '<div class="catalogue-row"><div class="catalogue-icon">' + (a.kind==='cargo'?'📦':a.category==='Regional'?'🛩️':'✈️') + '</div><div><b>' + a.model + '</b><small>' + a.category + ' · ' + (a.seats || a.cargoTons + ' t cargo') + ' · Range ' + a.range.toLocaleString('en-GB') + ' km</small></div></div>').join('');
 }
 function renderEmployees() {
-  const roles=[['security','Security','🛂','Passenger screening and terminal safety'],['handling','Ground handling','🦺','Aircraft turnaround and baggage services'],['cleaning','Cleaning staff','🧹','Terminal cleanliness and comfort'],['maintenance','Maintenance','🔧','Runway and facility reliability'],['cargo','Cargo handlers','📦','Freight loading, warehouse and cargo turnaround']];
-  return `${panelHeader('HUMAN RESOURCES','Employees','Hire and manage the team that keeps your airport running.')}
-  <div class="employee-summary"><div><small>TOTAL STAFF</small><b>${totalStaff()}</b></div><div><small>WAGE COST / HR</small><b>${fmt(totalStaff()*55)}</b></div><div><small>STAFF EFFICIENCY</small><b>${Math.min(100,Math.round(55+totalStaff()*3))}%</b></div></div>
-  <div class="employee-list">${roles.map(([id,name,icon,desc])=>`<div class="employee-card"><div class="employee-icon">${icon}</div><div class="employee-info"><b>${name}</b><small>${desc}</small><span>${fmt(state.staff[id]*55)} / hour · 55 € per employee</span></div><div class="employee-count"><button data-staff="${id}" data-delta="-1" ${state.staff[id]<=0?'disabled':''}>−</button><b>${state.staff[id]}</b><button data-staff="${id}" data-delta="1">＋</button></div></div>`).join('')}</div>
-  <div class="info-note"><b>Staffing matters</b><span>More employees improve passenger satisfaction and operational efficiency, but each employee adds €55 per game hour to your expenses. Keep an eye on your balance.</span></div>`;
+  const roles=[
+    ['security','Security','🛂','Passenger screening and terminal safety'],
+    ['handling','Ground handling','🦺','Aircraft turnaround and baggage services'],
+    ['cleaning','Cleaning staff','🧹','Terminal cleanliness and comfort'],
+    ['maintenance','Maintenance','🔧','Runway and facility reliability'],
+    ['cargo','Cargo handlers','📦','Freight loading and warehouse operations'],
+    ['checkin','Check-in agents','🧾','Passenger check-in and document desks'],
+    ['baggage','Baggage teams','🧳','Unload, sort and load hold baggage'],
+    ['fueling','Fuel operators','⛽','Aircraft refuelling and fuel safety'],
+    ['catering','Catering crews','🍽️','Food and cabin supply services'],
+    ['mechanics','Aircraft engineers','🛠️','Aircraft inspections and line maintenance'],
+    ['controllers','Air traffic controllers','🎧','Manual ATC clearances and movement coordination'],
+    ['rescue','Fire & rescue','🚒','Emergency response and airfield safety'],
+    ['pilots','Airport-based pilots','👨‍✈️','Support for airport-owned and charter services'],
+    ['cabinCrew','Cabin crews','🧑‍✈️','Passenger boarding and turnaround support'],
+    ['shuttle','Passenger transport','🚌','Terminal transfers and assistance']
+  ];
+  return panelHeader('HUMAN RESOURCES','Employees','Build a complete airport workforce. Specialist teams improve the related turnaround processes.') +
+    '<div class="employee-summary"><div><small>TOTAL STAFF</small><b>' + totalStaff() + '</b></div><div><small>WAGE COST / HR</small><b>' + fmt(totalStaff()*55) + '</b></div><div><small>STAFF EFFICIENCY</small><b>' + Math.min(100,Math.round(55+totalStaff()*2.5)) + '%</b></div></div>' +
+    '<div class="employee-list">' + roles.map(([id,name,icon,desc]) => '<div class="employee-card"><div class="employee-icon">' + icon + '</div><div class="employee-info"><b>' + name + '</b><small>' + desc + '</small><span>' + fmt((state.staff[id]||0)*55) + ' / hour · €55 per employee</span></div><div class="employee-count"><button data-staff="' + id + '" data-delta="-1" ' + ((state.staff[id]||0)<=0?'disabled':'') + '>−</button><b>' + (state.staff[id]||0) + '</b><button data-staff="' + id + '" data-delta="1">＋</button></div></div>').join('') + '</div>' +
+    '<div class="info-note"><b>Specialist staffing</b><span>Check-in, baggage, fueling, catering, engineering and cabin teams speed up the corresponding flight turnaround tasks. Controllers are required for a well-staffed manual ATC room.</span></div>';
 }
+function renderPassengers() {
 function renderPassengers() {
   const capacity=120+state.buildings.filter(b=>b.type==='terminal').length*100;
   return `${panelHeader('PASSENGER EXPERIENCE','Passengers','Passenger satisfaction is shaped by staffing, services and airport conditions.')}
@@ -255,12 +290,15 @@ function renderFinances() {
     ['Passenger parking', incomeParts.parking],
     ['Airport hotel', incomeParts.hotels],
     ['Cargo operations', incomeParts.cargo],
+    ['Investment returns', incomeParts.investments || 0],
   ];
   const expenseLabels = [
     ['Employee wages', expenseParts.wages],
     ['Base airport operations', expenseParts.baseOperations],
     ['Building maintenance', expenseParts.buildingMaintenance],
     ['Runway wear & maintenance', expenseParts.runwayMaintenance],
+    ['Loan principal & interest', expenseParts.loanPayments || 0],
+    ['Airport taxes', expenseParts.taxes || 0],
   ];
   return `${panelHeader('AIRPORT ECONOMY','Finances','See every recurring payment and watch the money actually enter or leave your airport account.')}
   <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} net per game hour · automatically paid</span></div><div class="balance-icon">€</div></div>
@@ -270,7 +308,8 @@ function renderFinances() {
   <div class="content-card"><div class="card-heading"><h3>Operating expenses</h3><span class="muted-label">PER GAME HOUR</span></div>${expenseLabels.map(([label,value])=>`<div class="facility-row"><span>${label}</span><b class="bad-text">−${fmt(value)}</b></div>`).join('')}<div class="facility-row"><span><b>Net recurring result</b></span><b class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)}</b></div></div>
   <div class="content-card chart-card"><div class="card-heading"><h3>Recent flight performance</h3><span class="muted-label">PER COMPLETED FLIGHT</span></div><div class="chart-legend"><span><i class="legend-income"></i> Revenue</span><span><i class="legend-expense"></i> Expenses</span></div><div class="bar-chart">${history.map(h=>`<div class="bar-group"><div class="bar-pair"><i class="bar-income" style="height:${Math.max(2,h.income/max*100)}%" title="Revenue ${fmt(h.income)}"></i><i class="bar-expense" style="height:${Math.max(2,h.expenses/max*100)}%" title="Expenses ${fmt(h.expenses)}"></i></div><small>${h.label}</small></div>`).join('')||'<div class="empty-state">Complete a flight to start building your financial history.</div>'}</div></div>
   <div class="maintenance-card"><div><small>RUNWAY SURFACE CONDITION</small><strong>${Math.round(state.runwayCondition ?? 100)}%</strong><p>Landings wear the asphalt. Repair the surface to keep maintenance costs under control.</p><div class="satisfaction-bar"><i style="width:${state.runwayCondition ?? 100}%"></i></div></div><button class="primary-small" data-action="repair-runway" ${(state.runwayCondition ?? 100) >= 99 ? 'disabled' : ''}>REPAIR · ${fmt(Math.round((100-(state.runwayCondition ?? 100))*140+250))}</button></div>
-  <div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>`;
+  <div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>
+  ${renderFinanceExpansion()}`;
 }
 function renderResearch() {
   return `${panelHeader('AIRPORT INNOVATION','Research & technology','Invest in improvements that have a measurable effect on airport operations.')}
@@ -301,6 +340,87 @@ function renderContracts() {
       </article>`;
     }).join('')}</div>
     <div class="info-note"><b>Contract strategy</b><span>Contracts are optional but pay more than ordinary flight handling. Cargo agreements require a Cargo Terminal. Completing a contract frees one of your two active slots.</span></div>`;
+}
+
+function renderLandExpansionCard() {
+  const radius = state.expansion?.world?.buildRadius || 90;
+  const cost = getNextLandExpansionCost(state);
+  return '<div class="land-expansion-card"><div><small>LAND DEVELOPMENT</small><b>Unlock a new airport parcel</b><span>Current construction radius: ' + radius + ' · The next parcel extends it by 40 units.</span></div><button class="primary-small" data-land-expansion>EXPAND · ' + (isSandbox()?'FREE':fmt(cost)) + '</button></div>';
+}
+function renderFinanceExpansion() {
+  const finance = state.expansion?.finance || { loans: [], investments: [], taxPaid: 0, taxRate: .08 };
+  const debt = finance.loans.reduce((sum, loan) => sum + loan.principal, 0);
+  const owned = new Set(finance.investments.map(item => item.id));
+  return '<div class="section-title"><h3>Loans, taxes & investments</h3><span class="muted-label">AIRPORT FINANCE</span></div>' +
+    '<div class="finance-tools"><div class="finance-tool"><small>OUTSTANDING LOANS</small><strong>' + fmt(debt) + '</strong><p>Loan interest and scheduled principal repayments are included in hourly expenses.</p><div class="finance-inline"><input id="loan-amount" type="number" min="5000" step="5000" value="50000" aria-label="Loan amount"><button class="primary-small" data-take-loan>TAKE LOAN</button></div><div class="finance-inline"><input id="repay-amount" type="number" min="1000" step="1000" value="10000" aria-label="Loan repayment amount"><button class="secondary-small" data-repay-loan>REPAY DEBT</button></div></div>' +
+    '<div class="finance-tool"><small>ACCUMULATED TAX</small><strong>' + fmt(finance.taxPaid || 0) + '</strong><p>Current effective airport tax rate: ' + Math.round((finance.taxRate || .08)*100) + '%. Tax is charged on positive operating profit.</p></div></div>' +
+    '<div class="investment-grid">' + INVESTMENT_OPTIONS.map(option => '<article class="investment-card"><div><small>' + option.risk.toUpperCase() + ' RISK</small><b>' + option.name + '</b><p>' + option.description + '</p></div><strong>+' + fmt(option.hourlyReturn) + ' / hr</strong><button class="' + (owned.has(option.id)?'secondary-small':'primary-small') + '" data-investment="' + option.id + '" ' + (owned.has(option.id)?'disabled':'') + '>' + (owned.has(option.id)?'OWNED':'INVEST · '+fmt(option.cost)) + '</button></article>').join('') + '</div>';
+}
+function renderNetwork() {
+  const destinations = AIRPORT_DESTINATIONS;
+  const scheduled = state.expansion.schedules;
+  const destinationOptions = destinations.map(d => '<option value="' + d.id + '">' + d.name + ' · ' + d.country + ' · ' + d.distance.toLocaleString('en-GB') + ' km</option>').join('');
+  const airlineOptions = AIRLINE_CATALOG.map(a => '<option value="' + a.id + '">' + a.name + '</option>').join('');
+  const aircraftOptions = AIRCRAFT_CATALOG.map(a => '<option value="' + a.id + '">' + a.model + ' · ' + a.range.toLocaleString('en-GB') + ' km</option>').join('');
+  const pins = destinations.map(d => '<button class="world-map-pin" style="left:' + d.mapX + '%;top:' + d.mapY + '%" title="' + d.name + ' · ' + d.country + '">' + d.id + '</button>').join('');
+  const lines = scheduled.map(route => {
+    const d = destinations.find(item => item.id === route.destinationId);
+    return d ? '<line x1="53%" y1="28%" x2="' + d.mapX + '%" y2="' + d.mapY + '%" class="' + (route.enabled?'route-line':'route-line disabled') + '"/>' : '';
+  }).join('');
+  return panelHeader('AIRLINE NETWORK','World destinations','Plan regional, European and intercontinental services. Aircraft range is checked before a route can be scheduled.') +
+    '<div class="network-map-card"><div class="network-map-heading"><b>INTERNATIONAL DESTINATION MAP</b><span>HOME HUB · SKYPORT</span></div><div class="network-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Schematic world map"><path class="continent" d="M5 18 L16 11 L27 14 L34 24 L29 33 L23 38 L20 49 L13 45 L9 34 Z M27 50 L37 48 L43 57 L40 72 L34 88 L27 79 L25 65 Z M44 15 L55 12 L64 18 L68 29 L60 34 L55 28 L48 32 L42 25 Z M48 35 L60 37 L65 49 L59 57 L55 73 L48 65 L45 51 Z M62 17 L77 12 L92 19 L96 32 L88 41 L77 37 L70 29 Z M74 48 L84 45 L91 54 L86 64 L77 62 Z" /></svg>' + lines + '<span class="world-map-hub">HOME HUB</span>' + pins + '</div><div class="map-legend"><span><i></i>Scheduled destinations</span><span>16 destinations · fictional airline network</span></div></div>' +
+    '<div class="section-title"><h3>Create flight service</h3><span class="muted-label">ROUTE PLANNER</span></div>' +
+    '<div class="route-planner"><label>Destination<select id="route-destination">' + destinationOptions + '</select></label><label>Airline<select id="route-airline">' + airlineOptions + '</select></label><label>Aircraft<select id="route-aircraft">' + aircraftOptions + '</select></label><label>Interval<select id="route-interval"><option value="24">Every 24 game min</option><option value="36" selected>Every 36 game min</option><option value="48">Every 48 game min</option><option value="60">Every 60 game min</option><option value="90">Every 90 game min</option></select></label><button class="primary-small" data-add-route>＋ ADD SCHEDULED ROUTE</button></div>' +
+    '<div class="section-title"><h3>Airline timetable</h3><span class="muted-label">' + scheduled.length + ' / 18 ROUTES</span></div>' +
+    '<div class="scheduled-route-list">' + (scheduled.map(route => {
+      const d = destinations.find(item => item.id === route.destinationId), a = AIRLINE_CATALOG.find(item => item.id === route.airlineId), aircraft = AIRCRAFT_CATALOG.find(item => item.id === route.aircraftId);
+      return '<article class="scheduled-route"><div><b>' + (a?.name || 'Airline') + ' → ' + (d?.name || 'Destination') + '</b><small>' + (aircraft?.model || 'Aircraft') + ' · Every ' + route.interval + ' game minutes · Next ' + timeLabel(route.nextAt) + '</small></div><div class="route-actions"><span class="status-pill ' + (route.enabled?'active':'') + '">' + (route.enabled?'ACTIVE':'PAUSED') + '</span><button class="secondary-small" data-toggle-route="' + route.id + '">' + (route.enabled?'PAUSE':'RESUME') + '</button><button class="danger-small" data-remove-route="' + route.id + '">REMOVE</button></div></article>';
+    }).join('') || '<div class="empty-state">No routes yet. Add your first international service above.</div>') + '</div>';
+}
+function renderAtc() {
+  const flights = state.expansion.activeFlights;
+  const manual = state.expansion.atc.mode === 'manual';
+  return panelHeader('AIR TRAFFIC CONTROL','ATC tower','Coordinate arrivals, runway access and departures. Manual mode requires your clearance before an aircraft can move from holding or depart.') +
+    '<div class="atc-status-card"><div><small>CONTROL MODE</small><b>' + (manual?'MANUAL CONTROL':'AUTOMATIC CONTROL') + '</b><span>Runway status: ' + (state.expansion.atc.runwayFlightId ? 'OCCUPIED · '+state.expansion.atc.runwayFlightId : 'AVAILABLE') + '</span></div><button class="' + (manual?'secondary-small':'primary-small') + '" data-atc-mode="' + (manual?'automatic':'manual') + '">SWITCH TO ' + (manual?'AUTO':'MANUAL') + '</button></div>' +
+    '<div class="section-title"><h3>Live traffic and clearances</h3><span class="muted-label">' + flights.length + ' AIRCRAFT</span></div>' +
+    (flights.length ? '<div class="atc-traffic-list">' + flights.map(f => {
+      const arrival = f.phase === 'holding';
+      const departure = f.phase === 'ready-departure';
+      const action = arrival ? '<button class="primary-small" data-clearance="' + f.id + '" data-clearance-type="arrival" ' + (manual?'':'disabled') + '>CLEAR TO LAND</button>' : departure ? '<button class="primary-small" data-clearance="' + f.id + '" data-clearance-type="departure" ' + (manual?'':'disabled') + '>CLEAR FOR TAKE-OFF</button>' : '<span class="status-pill active">IN PROGRESS</span>';
+      return '<article class="atc-traffic-row"><div><b>' + f.id + ' · ' + f.airline + '</b><small>' + f.model + ' · ' + f.destination + '</small><span>' + flightExpansionPhaseLabel(f.phase) + '</span></div>' + action + '</article>';
+    }).join('') + '</div>' : '<div class="empty-state">No aircraft in the control queue. Scheduled aircraft will appear here.</div>') +
+    '<div class="info-note"><b>Movement safety</b><span>The simulation reserves the runway for one landing or take-off roll at a time and reserves aircraft stands so two flights cannot use the same gate.</span></div>';
+}
+function renderTerminal() {
+  const t = state.expansion.terminal;
+  const active = state.expansion.activeFlights.filter(f => f.phase === 'servicing').length;
+  const counters = [['Check-in queue',t.checkInQueue],['Security queue',t.securityQueue],['Baggage backlog',t.baggageQueue],['Passengers checked in',t.checkedIn],['Passengers screened',t.securityScreened],['Bags handled',Math.round(t.bagsHandled)]];
+  const services = [['Fuel services',t.fuelServices],['Catering turns',t.cateringServices],['Technical inspections',t.maintenanceChecks]];
+  return panelHeader('PASSENGER & GROUND SERVICES','Terminal operations','A linked view of passenger processing and the aircraft services that happen during each turnaround.') +
+    '<div class="fleet-summary"><div><span>AIRCRAFT IN TURNAROUND</span><b>' + active + '</b></div><div><span>CHECKED IN</span><b>' + t.checkedIn.toLocaleString('en-GB') + '</b></div><div><span>BAGS HANDLED</span><b>' + Math.round(t.bagsHandled).toLocaleString('en-GB') + '</b></div></div>' +
+    '<div class="section-title"><h3>Passenger processing</h3><span class="muted-label">LIVE QUEUES</span></div><div class="content-card">' + counters.map(([label,value]) => '<div class="facility-row"><span>' + label + '</span><b>' + Math.round(value).toLocaleString('en-GB') + '</b></div>').join('') + '</div>' +
+    '<div class="section-title"><h3>Aircraft ground handling</h3><span class="muted-label">SERVICE HISTORY</span></div><div class="content-card">' + services.map(([label,value]) => '<div class="facility-row"><span>' + label + '</span><b>' + value.toLocaleString('en-GB') + '</b></div>').join('') + '</div>' +
+    '<div class="terminal-process-grid">' + [['🧳','Baggage','Unload, sort and load hold baggage'],['🛂','Security','Screen passengers before boarding'],['⛽','Refuelling','Service aircraft fuel requirements'],['🍽️','Catering','Restock food and cabin supplies'],['🛠️','Engineering','Run technical line inspections'],['🚌','Passenger flow','Check-in, boarding and terminal movement']].map(([icon,title,desc]) => '<div><span>' + icon + '</span><b>' + title + '</b><small>' + desc + '</small></div>').join('') + '</div>';
+}
+function renderCampaign() {
+  const chapterIndex = state.expansion.campaign.chapter;
+  const chapter = CAMPAIGN_CHAPTERS[chapterIndex];
+  const completed = new Set(state.expansion.campaign.completed);
+  return panelHeader('AIRPORT CAREER','Campaign & sandbox','Develop a small airport into an international gateway through structured goals, or switch to unrestricted creative building.') +
+    '<div class="mode-switch-card"><div><small>CURRENT GAME MODE</small><b>' + (isSandbox()?'SANDBOX':'CAREER') + '</b><span>' + (isSandbox()?'Build and invest without purchase costs.':'Earn money, unlock facilities and complete milestones.') + '</span></div><button class="primary-small" data-game-mode="' + (isSandbox()?'career':'sandbox') + '">SWITCH TO ' + (isSandbox()?'CAREER':'SANDBOX') + '</button></div>' +
+    '<div class="section-title"><h3>Airport development campaign</h3><span class="muted-label">CHAPTER ' + Math.min(chapterIndex+1,CAMPAIGN_CHAPTERS.length) + ' / ' + CAMPAIGN_CHAPTERS.length + '</span></div>' +
+    '<div class="campaign-list">' + CAMPAIGN_CHAPTERS.map((item,index) => {
+      const progress = campaignMetric(state,item);
+      const isDone = completed.has(item.id);
+      const isCurrent = index === chapterIndex;
+      return '<article class="campaign-chapter ' + (isDone?'complete':isCurrent?'current':'locked') + '"><div class="campaign-chapter-number">' + (isDone?'✓':String(index+1).padStart(2,'0')) + '</div><div><b>' + item.title + '</b><p>' + item.description + '</p><small>Progress: ' + Math.min(progress,item.goal).toLocaleString('en-GB') + ' / ' + item.goal.toLocaleString('en-GB') + ' · Reward ' + fmt(item.reward) + ' + ' + item.xp + ' XP</small></div>' + (isCurrent?'<button class="primary-small" data-campaign-claim>CLAIM</button>':isDone?'<span class="status-pill active">COMPLETE</span>':'<span class="status-pill">LOCKED</span>') + '</article>';
+    }).join('') + '</div>' + (!chapter?'<div class="info-note"><b>Campaign completed</b><span>You have completed all current career chapters. Continue expanding in sandbox or set your own airport goals.</span></div>':'');
+}
+function renderMultiplayer() {
+  return panelHeader('ONLINE AIRPORTS','Multiplayer','The multiplayer feature is planned as a shared airport world rather than a fake local-only mode.') +
+    '<div class="multiplayer-status-card"><span class="multiplayer-status-icon">🌐</span><div><small>ONLINE SERVICE</small><b>Backend not connected</b><p>This version runs on static GitHub Pages and stores saves in this browser. Live multiplayer needs player accounts, a real-time server and a shared database.</p><span class="status-pill warning">NOT YET CONNECTED</span></div></div>' +
+    '<div class="content-card"><div class="card-heading"><h3>Planned multiplayer systems</h3></div><div class="facility-row"><span>Shared airport ownership</span><b>Planned</b></div><div class="facility-row"><span>Co-op building and operations</span><b>Planned</b></div><div class="facility-row"><span>Live shared flight network</span><b>Planned</b></div><div class="facility-row"><span>Player airline partnerships</span><b>Planned</b></div></div>' +
+    '<div class="info-note"><b>Why it is not active yet</b><span>Two browsers cannot safely share aircraft movements, money and airport edits through a static page alone. The backend must be built and tested before online play can be enabled.</span></div>';
 }
 
 function renderGuide() {
@@ -339,7 +459,7 @@ function renderStatistics() {
 function renderSettings() {
   return `${panelHeader('GAME OPTIONS','Settings','Manage your save, simulation preferences and visual quality.')}
   <div class="settings-group"><h3>Graphics</h3><div class="setting-row"><div><b>Rendering quality</b><small>Lower quality can improve performance on older computers.</small></div><select id="quality-select"><option ${graphicsQuality==='High'?'selected':''}>High</option><option ${graphicsQuality==='Medium'?'selected':''}>Medium</option><option ${graphicsQuality==='Low'?'selected':''}>Low</option></select></div></div>
-  <div class="settings-group"><h3>Audio</h3><div class="setting-row"><div><b>Music and sound effects</b><small>The audio engine is scheduled for a later development phase.</small></div><span class="status-pill">NOT IN PHASE 1</span></div></div>
+  <div class="settings-group"><h3>Audio & ambience</h3><div class="setting-row"><div><b>Airport soundscape</b><small>Procedural terminal ambience and notification / radio-style tones. Enable from a user click.</small></div><button class="secondary-small" data-airport-audio>' + (isAirportAudioEnabled()?'TURN SOUND OFF':'TURN SOUND ON') + '</button></div></div>
   <div class="settings-group"><h3>Simulation</h3><div class="setting-row"><div><b>Automatic saving</b><small>Your airport is saved automatically every 10 seconds.</small></div><span class="status-pill active">ENABLED</span></div><div class="setting-row"><div><b>Game speed</b><small>Choose the speed from the controls at the bottom of the screen.</small></div><b>${state.speed===0?'Paused':`${state.speed}×`}</b></div></div>
   <div class="settings-group"><h3>Save management</h3><div class="setting-actions"><button class="primary-small" data-action="save">▣ Save now</button><button class="secondary-small" data-action="load">↶ Load saved game</button><button class="danger-small" data-action="new-game">＋ New airport</button></div><small class="save-detail">Save data is stored locally in this browser. Clearing browser storage can remove the save.</small></div>`;
 }
@@ -361,7 +481,7 @@ function refreshHUD() {
   $('xp-next').textContent=`NEXT: LEVEL ${state.level+1}`;
   $('xp-fill').style.width=`${Math.min(100,state.xp/(state.level*500)*100)}%`;
   document.querySelectorAll('.speed-button').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===state.speed));
-  world.syncFlight(state.activeFlight); world.setTimeOfDay(state.gameMinutes);
+  world.syncFlight(state.activeFlight); world.syncTrafficFlights(state.expansion?.activeFlights||[]); world.setTimeOfDay(state.gameMinutes);
 }
 
 
@@ -399,10 +519,39 @@ function advanceTutorial(skip = false) {
 
 function handlePanelClick(e) {
   const tab=e.target.closest('[data-tab]'); if(tab){setActiveTab(tab.dataset.tab);renderPanel();return;}
+  const addRouteButton=e.target.closest('[data-add-route]');
+  if(addRouteButton){
+    const result=addFlightSchedule(state,{destinationId:$('route-destination')?.value,airlineId:$('route-airline')?.value,aircraftId:$('route-aircraft')?.value,interval:$('route-interval')?.value});
+    if(result.ok)notifyLocal('Route scheduled','A new service to '+AIRPORT_DESTINATIONS.find(d=>d.id===result.route.destinationId).name+' has been added.','success');
+    else notifyLocal('Route not created',result.reason==='range'?'This aircraft does not have enough range for that destination.':result.reason==='limit'?'The airport has reached its 18 scheduled route limit.':'Check the selected airline, aircraft and destination.','warning');
+    renderPanel();saveNow(false);return;
+  }
+  const toggleRoute=e.target.closest('[data-toggle-route]');
+  if(toggleRoute){const route=state.expansion.schedules.find(item=>item.id===toggleRoute.dataset.toggleRoute);if(route)route.enabled=!route.enabled;renderPanel();saveNow(false);return;}
+  const removeRoute=e.target.closest('[data-remove-route]');
+  if(removeRoute){state.expansion.schedules=state.expansion.schedules.filter(item=>item.id!==removeRoute.dataset.removeRoute);renderPanel();saveNow(false);return;}
+  const atcMode=e.target.closest('[data-atc-mode]');
+  if(atcMode){setAtcMode(state,atcMode.dataset.atcMode);notifyLocal('ATC mode changed','Traffic control is now '+atcMode.dataset.atcMode+'.','info');renderPanel();saveNow(false);return;}
+  const clearance=e.target.closest('[data-clearance]');
+  if(clearance){const result=grantAtcClearance(state,clearance.dataset.clearance,clearance.dataset.clearanceType);notifyLocal(result.ok?'Clearance issued':'Clearance unavailable',result.ok?'ATC clearance granted to '+clearance.dataset.clearance+'.':'The aircraft is not in a phase that accepts this clearance.','info');renderPanel();saveNow(false);return;}
+  const land=e.target.closest('[data-land-expansion]');
+  if(land){const result=buyLandExpansion(state);if(result.ok){world.setBuildRadius(result.radius);notifyLocal('Airport land expanded','Construction area extended to '+result.radius+' world units.','success');}else notifyLocal('Not enough funds','The next land parcel costs '+fmt(result.cost)+'.','warning');renderPanel();refreshHUD();saveNow(false);return;}
+  const loan=e.target.closest('[data-take-loan]');
+  if(loan){const result=takeAirportLoan(state,Number($('loan-amount')?.value||50000));notifyLocal(result.ok?'Loan approved':'Loan declined',result.ok?'The loan has been added to your airport balance.':'Choose an amount between €5,000 and your current credit limit.','info');renderPanel();refreshHUD();saveNow(false);return;}
+  const repay=e.target.closest('[data-repay-loan]');
+  if(repay){const result=repayAirportLoan(state,Number($('repay-amount')?.value||10000));notifyLocal(result.ok?'Repayment completed':'No repayment made',result.ok?'Outstanding loan principal has been reduced.':'You need available cash and an outstanding loan to make a repayment.','info');renderPanel();refreshHUD();saveNow(false);return;}
+  const investment=e.target.closest('[data-investment]');
+  if(investment){const result=makeAirportInvestment(state,investment.dataset.investment);notifyLocal(result.ok?'Investment acquired':'Investment unavailable',result.ok?result.option.name+' now produces '+fmt(result.option.hourlyReturn)+' per game hour.':result.reason==='owned'?'You already own this investment.':'You do not have enough money for this investment.','info');renderPanel();refreshHUD();saveNow(false);return;}
+  const campaign=e.target.closest('[data-campaign-claim]');
+  if(campaign){const result=claimCampaignChapter(state);if(result.ok){giveXP(state,result.chapter.xp);notifyLocal('Campaign chapter completed',result.chapter.title+' · '+fmt(result.chapter.reward)+' reward.','success');}else notifyLocal('Objective not complete','Finish the current chapter objectives before claiming the reward.','warning');renderPanel();refreshHUD();saveNow(false);return;}
+  const gameMode=e.target.closest('[data-game-mode]');
+  if(gameMode){setGameMode(state,gameMode.dataset.gameMode);notifyLocal('Game mode changed','Airport mode set to '+gameMode.dataset.gameMode+'.','success');renderPanel();saveNow(false);return;}
+  const audioButton=e.target.closest('[data-airport-audio]');
+  if(audioButton){setAirportAudioEnabled(!isAirportAudioEnabled()).then(enabled=>{notifyLocal(enabled?'Airport sound enabled':'Airport sound unavailable',enabled?'Procedural airport ambience is now active.':'This browser does not support the audio engine.','info');renderPanel();});return;}
   const build=e.target.closest('[data-build]'); if(build){openBuild(build.dataset.build);renderPanel();return;}
   const cat=e.target.closest('[data-category]');if(cat){selectedCategory=cat.dataset.category;renderPanel();return;}
-  const staff=e.target.closest('[data-staff]');if(staff){const role=staff.dataset.staff,delta=Number(staff.dataset.delta);if(delta>0){const cost=1250;if(state.money<cost){notifyLocal('Not enough funds',`Hiring costs ${fmt(cost)}.`,'warning');return;}addMoney(state,-cost);state.staff[role]++;notifyLocal('Employee hired',`${role[0].toUpperCase()+role.slice(1)} staff increased to ${state.staff[role]}.`,'success');}else{if(state.staff[role]<=0)return;state.staff[role]--;notifyLocal('Employee released',`${role[0].toUpperCase()+role.slice(1)} staff reduced to ${state.staff[role]}.`,'info');}renderPanel();refreshHUD();return;}
-  const research=e.target.closest('[data-research]');if(research){const r=RESEARCH.find(x=>x.id===research.dataset.research);if(!r||state.research.includes(r.id)||state.researchInProgress)return;if(state.money<r.cost){notifyLocal('Not enough funds',`Research requires ${fmt(r.cost)}.`,'warning');return;}addMoney(state,-r.cost);state.researchInProgress={id:r.id,remaining:r.duration};notifyLocal('Research started',`${r.name} is now in development.`,'success');renderPanel();refreshHUD();return;}
+  const staff=e.target.closest('[data-staff]');if(staff){const role=staff.dataset.staff,delta=Number(staff.dataset.delta);if(delta>0){const cost=1250;if(!isSandbox()&&state.money<cost){notifyLocal('Not enough funds',`Hiring costs ${fmt(cost)}.`,'warning');return;}if(!isSandbox())addMoney(state,-cost);state.staff[role]++;notifyLocal('Employee hired',`${role[0].toUpperCase()+role.slice(1)} staff increased to ${state.staff[role]}.`,'success');}else{if(state.staff[role]<=0)return;state.staff[role]--;notifyLocal('Employee released',`${role[0].toUpperCase()+role.slice(1)} staff reduced to ${state.staff[role]}.`,'info');}renderPanel();refreshHUD();return;}
+  const research=e.target.closest('[data-research]');if(research){const r=RESEARCH.find(x=>x.id===research.dataset.research);if(!r||state.research.includes(r.id)||state.researchInProgress)return;if(!isSandbox()&&state.money<r.cost){notifyLocal('Not enough funds',`Research requires ${fmt(r.cost)}.`,'warning');return;}if(!isSandbox())addMoney(state,-r.cost);state.researchInProgress={id:r.id,remaining:r.duration};notifyLocal('Research started',`${r.name} is now in development.`,'success');renderPanel();refreshHUD();return;}
   const claim=e.target.closest('[data-claim]');if(claim){const m=MISSION_DEFS.find(x=>x.id===claim.dataset.claim);if(!m||state.missionsClaimed.includes(m.id)||missionProgress(m)<m.goal)return;state.missionsClaimed.push(m.id);addMoney(state,m.reward);giveXP(state,m.xp);notifyLocal('Mission completed',`${m.title}: ${fmt(m.reward)} and ${m.xp} XP earned.`,'success');renderPanel();refreshHUD();return;}
 
   const contractButton=e.target.closest('[data-accept-contract]');
@@ -538,10 +687,21 @@ function animate(now) {
       state.researchInProgress.remaining-=realDelta*state.speed;
       if(state.researchInProgress.remaining<=0){const r=RESEARCH.find(x=>x.id===state.researchInProgress.id);state.research.push(r.id);state.researchInProgress=null;notifyLocal('Research completed',`${r.name}: ${r.description}`,'success');renderPanel();}
     }
-    if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(['missions','overview','flights','operations','contracts','finances'].includes(currentTab))renderPanel();state._lastPanelTick=state.gameMinutes;}
+    if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(['missions','overview','flights','operations','contracts','finances','network','atc','terminal','campaign'].includes(currentTab))renderPanel();state._lastPanelTick=state.gameMinutes;}
     if(oldWeather!==state.weather)world.setWeather(state.weather);
     world.setTimeOfDay(state.gameMinutes);
+    tickAirportExpansion(state,Math.min(realDelta,.1)*state.speed,{
+      onEvent:event=>{notifyLocal(event.title,event.message,event.type||'info');playAirportSound(event.type==='warning'?'alert':event.title.toLowerCase().includes('depart')?'departure':event.title.toLowerCase().includes('land')||event.title==='Touchdown'?'arrival':'radio');},
+      onComplete:flight=>{
+        const result=settleFlight(state,flight.passengers,flight.cargoTons||0);
+        state.cargoTonsHandled=(state.cargoTonsHandled||0)+(flight.cargoTons||0);
+        state.stats.peakPassengers=Math.max(state.stats.peakPassengers,state.passengers);
+        state.flightHistory.unshift({id:flight.id,airline:flight.airline,model:flight.model,passengers:flight.passengers,cargoTons:flight.cargoTons||0,kind:flight.kind,destination:flight.destination,net:result.net,time:state.gameMinutes,status:'Departed'});
+        state.flightHistory=state.flightHistory.slice(0,20);progressContracts(state,flight);giveXP(state,0);
+      }
+    });
     world.syncFlight(state.activeFlight);
+    world.syncTrafficFlights(state.expansion.activeFlights);
     if(now-lastAutosave>10000){saveNow(false);lastAutosave=now;}
     if(now%400<18)refreshHUD();
   }
