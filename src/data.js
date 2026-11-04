@@ -11,7 +11,15 @@ export const BUILDINGS = [
   { id: 'fuel', name: 'Fuel Depot', category: 'Operations', icon: '⛽', cost: 17000, upkeep: 110, level: 5, description: 'Unlocks additional fuel-service revenue per flight.', size: 3.8, footprint: [8, 9], zone: 'service', xp: 110 },
   { id: 'cargo-terminal', name: 'Cargo Terminal', category: 'Logistics', icon: '📦', cost: 36500, upkeep: 210, level: 5, description: 'Boosts freight revenue and cuts cargo handling costs. Required for premium cargo contracts.', size: 5.2, footprint: [18, 12], zone: 'service', xp: 190 },
   { id: 'hotel', name: 'Airport Hotel', category: 'Passenger', icon: '🏨', cost: 42500, upkeep: 245, level: 6, description: 'Adds hotel income and improves passenger satisfaction.', size: 5.3, footprint: [17, 14], zone: 'service', xp: 210 },
-  { id: 'maintenance', name: 'Engineering Depot', category: 'Infrastructure', icon: '🧰', cost: 28500, upkeep: 155, level: 4, description: 'Gives your maintenance team the equipment to respond to runway and equipment incidents.', size: 4.5, footprint: [14, 11], zone: 'service', xp: 155 }
+  { id: 'maintenance', name: 'Engineering Depot', category: 'Infrastructure', icon: '🧰', cost: 28500, upkeep: 155, level: 4, description: 'Gives your maintenance team the equipment to respond to runway and equipment incidents.', size: 4.5, footprint: [14, 11], zone: 'service', xp: 155 },
+  { id: 'checkin', name: 'Check-in Hall', category: 'Passenger', icon: '🧾', cost: 16500, upkeep: 125, level: 2, description: 'Adds check-in capacity and reduces passenger queues.', size: 4.2, footprint: [15, 11], zone: 'service', xp: 100 },
+  { id: 'security', name: 'Security Screening Centre', category: 'Safety', icon: '🛂', cost: 24000, upkeep: 170, level: 3, description: 'Adds dedicated security lanes and increases passenger processing capacity.', size: 4.3, footprint: [16, 12], zone: 'service', xp: 135 },
+  { id: 'baggage', name: 'Baggage Handling Centre', category: 'Logistics', icon: '🧳', cost: 29500, upkeep: 190, level: 4, description: 'Improves baggage throughput and reduces turnaround delays.', size: 4.7, footprint: [17, 12], zone: 'service', xp: 155 },
+  { id: 'catering', name: 'Airline Catering Facility', category: 'Operations', icon: '🍽️', cost: 26000, upkeep: 165, level: 4, description: 'Provides catering trucks and increases the quality of aircraft turnaround.', size: 4.4, footprint: [15, 11], zone: 'service', xp: 145 },
+  { id: 'deicing', name: 'De-icing Centre', category: 'Safety', icon: '❄️', cost: 31500, upkeep: 210, level: 6, description: 'Supports winter operations and reduces disruption during snow and freezing conditions.', size: 4.8, footprint: [18, 13], zone: 'service', xp: 180 },
+  { id: 'terminal-pier', name: 'Terminal Pier', category: 'Passenger', icon: '🏢', cost: 58000, upkeep: 320, level: 7, description: 'Adds a new glass passenger concourse with additional gate capacity.', size: 5.8, footprint: [22, 14], zone: 'service', xp: 260 },
+  { id: 'ground-support', name: 'Ground Support Depot', category: 'Operations', icon: '🦺', cost: 22500, upkeep: 145, level: 3, description: 'Houses ground power, pushback, baggage and service equipment.', size: 4.1, footprint: [14, 11], zone: 'service', xp: 130 },
+  { id: 'taxiway', name: 'Taxiway Segment', category: 'Infrastructure', icon: '🛣️', cost: 12000, upkeep: 65, level: 2, description: 'Build additional paved taxiway connections around the airport movement area.', size: 2.1, footprint: [24, 8], zone: 'taxiway', xp: 85 }
 ];
 
 export const RESEARCH = [
@@ -22,13 +30,15 @@ export const RESEARCH = [
   { id: 'premium-service', name: 'Premium Ground Service', category: 'Aircraft handling', icon: '⭐', cost: 32000, duration: 120, description: 'Earn 20% more from flight handling.', effect: 'revenue', level: 7 }
 ];
 
+import { createAirportExpansionState } from './engine/airport-expansion.js';
+
 export const INITIAL_STATE = () => ({
-  version: 3, money: 75000, level: 1, xp: 0, reputation: 50, satisfaction: 82,
+  version: 4, money: 75000, level: 1, xp: 0, reputation: 50, satisfaction: 82,
   passengers: 0, totalPassengers: 0, cargoTonsHandled: 0, runwayCondition: 100, gameMinutes: 8 * 60, speed: 1, weather: 'Sunny',
-  buildings: [], staff: { security: 2, handling: 3, cleaning: 1, maintenance: 1, cargo: 1 },
+  buildings: [], staff: { security: 2, handling: 3, cleaning: 1, maintenance: 1, cargo: 1, checkin: 1, baggage: 1, fueling: 1, catering: 1, mechanics: 1, controllers: 1, rescue: 1, pilots: 1, cabinCrew: 1, shuttle: 1 },
   research: [], researchInProgress: null, missionsClaimed: [], flightsCompleted: 0, flightsCancelled: 0,
   lifetimeRevenue: 0, lifetimeExpenses: 0, retailIncome: 0, parkingIncome: 0,
-  flightHistory: [], notifications: [], nextFlightAt: 8 * 60 + 1, activeFlight: null,
+  flightHistory: [], notifications: [], nextFlightAt: Number.MAX_SAFE_INTEGER, activeFlight: null, expansion: createAirportExpansionState(8 * 60),
   activeContracts: [], completedContracts: [], contractsCompleted: 0, contractIncome: 0,
   activeIncident: null, nextIncidentAt: 8 * 60 + 90,
   stats: { constructions: 0, incidents: 0, incidentsResolved: 0, takeoffs: 0, landings: 0, peakPassengers: 0 },

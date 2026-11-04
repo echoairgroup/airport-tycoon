@@ -9,11 +9,13 @@ function rectanglesOverlap(a, b, gap = 0) {
  * Validates a construction footprint against the playable airport zones,
  * fixed infrastructure and every already-built facility.
  */
-export function getPlacementStatus(type, x, z, placedBuildings = []) {
+export function getPlacementStatus(type, x, z, placedBuildings = [], options = {}) {
   const item = BUILDINGS.find(b => b.id === type);
   if (!item) return { valid: false, reason: 'Unknown building' };
   const [w, d] = item.footprint || [8, 8];
   const candidate = { x, z, w, d };
+  const buildRadius = Math.max(90, Number(options.buildRadius) || 90);
+  const maxServiceZ = 109 + (buildRadius - 90);
 
   // A runway extension is a special airside construction: it may only connect
   // to either physical end of the existing runway, never to the service yard.
@@ -28,7 +30,7 @@ export function getPlacementStatus(type, x, z, placedBuildings = []) {
     return { valid: true, reason: 'Valid runway connection' };
   }
 
-  if (Math.abs(x) + w / 2 > 90 || z - d / 2 < -48 || z + d / 2 > 109) {
+  if (Math.abs(x) + w / 2 > buildRadius || z - d / 2 < -48 || z + d / 2 > maxServiceZ) {
     return { valid: false, reason: 'Outside airport boundary' };
   }
 
@@ -51,9 +53,19 @@ export function getPlacementStatus(type, x, z, placedBuildings = []) {
     return { valid: true, reason: 'Valid gate stand' };
   }
 
-  // Non-airside facilities belong in the marked service yard behind the terminal.
-  if (z - d / 2 < 30.5 || z + d / 2 > 109) {
-    return { valid: false, reason: 'Place this facility in the marked service yard' };
+  if (item.zone === 'taxiway') {
+    if (z - d / 2 < -46 || z + d / 2 > 30.5) return { valid: false, reason: 'Taxiway segments must connect within the airside movement area' };
+    const obstacles = [{ x: 0, z: 21, w: 31, d: 13 }, ...placedBuildings.map(building => {
+      const def = BUILDINGS.find(entry => entry.id === building.type);
+      const fp = def?.footprint || [10, 10];
+      return { x: building.x, z: building.z, w: fp[0], d: fp[1] };
+    })];
+    for (const obstacle of obstacles) if (rectanglesOverlap(candidate, obstacle, 1)) return { valid: false, reason: 'Taxiway segment overlaps existing airport infrastructure' };
+    return { valid: true, reason: 'Valid taxiway connection' };
+  }
+
+  if (z - d / 2 < 30.5 || z + d / 2 > maxServiceZ) {
+    return { valid: false, reason: 'Place this facility in the marked service yard or purchased airport land' };
   }
   const fixedObstacles = [
     { x: -38, z: 34, w: 8, d: 6, label: 'Maintenance shed' },
