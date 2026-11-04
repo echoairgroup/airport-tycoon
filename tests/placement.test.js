@@ -339,6 +339,7 @@ test('expansion land must be purchased before construction can use it', () => {
 
 test('purchased land can be expanded repeatedly in multiple directions', () => {
   const state = INITIAL_STATE();
+  state.money = 200000;
   assert.equal(purchaseLandParcel(state, 'north').ok, true);
   assert.equal(purchaseLandParcel(state, 'west').ok, true);
   assert.equal(purchaseLandParcel(state, 'north').ok, true);
