@@ -158,3 +158,14 @@ test('airline contracts progress and pay out on a matching flight', () => {
   assert.equal(state.contractsCompleted, 1);
   assert.ok(state.money >= 87500);
 });
+
+
+test('allows taxiway construction in the airside movement area', () => {
+  const result = getPlacementStatus('taxiway', 42, 0);
+  assert.equal(result.valid, true);
+});
+
+test('prevents taxiway construction in the terminal service campus', () => {
+  const result = getPlacementStatus('taxiway', 42, 60);
+  assert.equal(result.valid, false);
+});

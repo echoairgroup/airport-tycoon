@@ -11,7 +11,10 @@ test('expansion initializes international schedules and v4 state',()=>{
 test('multiple scheduled aircraft can coexist in the traffic queue',()=>{
  const state=INITIAL_STATE(),first=state.expansion.schedules[0],second={...state.expansion.schedules[1],nextAt:first.nextAt};
  state.expansion.schedules=[first,second];state.gameMinutes=first.nextAt+1;tickAirportExpansion(state,.1);
- assert.equal(state.expansion.activeFlights.length,2);assert.ok(state.expansion.activeFlights.every(f=>f.phase==='holding'));
+ assert.equal(state.expansion.activeFlights.length,2);
+ assert.equal(state.expansion.activeFlights.filter(f=>f.phase==='approach').length,1);
+ assert.equal(state.expansion.activeFlights.filter(f=>f.phase==='holding').length,1);
+ assert.equal(state.expansion.activeFlights.filter(f=>f.gateId).length,1);
 });
 test('manual ATC holds arrivals until explicit landing clearance',()=>{
  const state=INITIAL_STATE();setAtcMode(state,'manual');
@@ -44,4 +47,38 @@ test('airport investments add recurring revenue',()=>{
 });
 test('campaign destination milestones count distinct routes',()=>{
  assert.equal(campaignMetric(INITIAL_STATE(),CAMPAIGN_CHAPTERS[2]),3);
+});
+
+
+test('an arriving aircraft completes the full landing, stand, service and departure cycle',()=>{
+ const state=INITIAL_STATE();
+ const route=addFlightSchedule(state,{destinationId:'AMS',airlineId:'northstar',aircraftId:'a320',interval:45}).route;
+ state.expansion.schedules=[{...route,enabled:false}];
+ state.gameMinutes=route.nextAt;
+ const completed=[];
+ tickAirportExpansion(state,.1,{onComplete:flight=>completed.push(flight)});
+ for(let i=0;i<1200&&completed.length===0;i++){
+  state.gameMinutes+=.25;
+  tickAirportExpansion(state,.25,{onComplete:flight=>completed.push(flight)});
+ }
+ assert.equal(completed.length,1);
+ assert.equal(state.expansion.activeFlights.length,0);
+ assert.equal(state.stats.landings,1);
+ assert.ok(state.expansion.terminal.checkedIn>0);
+ assert.ok(state.expansion.terminal.securityScreened>0);
+ assert.ok(state.expansion.terminal.fuelServices>0);
+ assert.ok(state.expansion.terminal.cateringServices>0);
+ assert.ok(state.expansion.terminal.maintenanceChecks>0);
+});
+
+test('only one flight can hold the runway reservation at a time',()=>{
+ const state=INITIAL_STATE();
+ const first=addFlightSchedule(state,{destinationId:'AMS',airlineId:'northstar',aircraftId:'a320',interval:45}).route;
+ const second=addFlightSchedule(state,{destinationId:'LHR',airlineId:'skyways',aircraftId:'atr72',interval:45}).route;
+ state.expansion.schedules=[{...first,nextAt:500},{...second,nextAt:500}];
+ state.gameMinutes=501;
+ tickAirportExpansion(state,.1);
+ assert.equal(state.expansion.activeFlights.length,2);
+ assert.equal(state.expansion.activeFlights.filter(f=>['approach','landing-rollout','takeoff'].includes(f.phase)).length,1);
+ assert.ok(state.expansion.atc.runwayFlightId);
 });
