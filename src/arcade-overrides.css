@@ -272,3 +272,17 @@
 .land-expansion-actions button small { margin-top:5px; color:#a8c6a4; font-size:6.5px; }
 .land-expansion-actions button:disabled { opacity:.38; cursor:not-allowed; }
 .land-expansion-footnote { color:#91a7a0; font-size:7px; line-height:1.5; }
+
+
+/* Passenger terminal cutaway */
+.terminal-view-card { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:12px 0 14px; padding:13px; border-radius:13px; background:linear-gradient(130deg,rgba(56,131,164,.2),rgba(255,255,255,.04)); border:1px solid rgba(139,208,235,.2); }
+.terminal-view-card small,.terminal-view-card b,.terminal-view-card span { display:block; }
+.terminal-view-card small { color:#9ab7c5; font-size:7px; letter-spacing:.1em; font-weight:800; }
+.terminal-view-card b { margin-top:4px; color:#f3f9fc; font-size:10px; }
+.terminal-view-card span { margin-top:4px; color:#9eb5c0; font-size:7px; }
+.terminal-process-list { display:grid; gap:7px; margin:10px 0 16px; }
+.terminal-process-list>div { display:grid; grid-template-columns:27px minmax(0,1fr); align-items:center; gap:2px 9px; padding:10px; border-radius:10px; background:rgba(255,255,255,.045); border:1px solid rgba(225,244,255,.08); }
+.terminal-process-list i { grid-row:span 2; display:grid; place-items:center; width:25px; height:25px; border-radius:8px; color:#a8e58c; background:rgba(136,197,107,.13); font-size:8px; font-style:normal; font-weight:900; }
+.terminal-process-list b { color:#f1f7fb; font-size:9px; }
+.terminal-process-list small { color:#9eb7c4; font-size:7.5px; line-height:1.4; }
+@media(max-width:480px) { .terminal-view-card { align-items:flex-start; flex-direction:column; } }

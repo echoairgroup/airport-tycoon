@@ -191,6 +191,8 @@ export class AirportWorld {
     this.aircraftLightTime = 0;
     this.aircraftMeshes = new Map();
     this.landMeshes = new Map();
+    this.terminalRoof = null;
+    this.terminalInteriorMode = false;
     this.parkedAircraft = [];
     this.trafficCars = [];
     this.trafficPath = null;
@@ -373,10 +375,17 @@ export class AirportWorld {
     const g = new THREE.Group();
     g.position.set(0, 0, 21);
     this.scene.add(g);
-    // Main hall: stepped roof, glass curtain wall, colourful fascia and entrance canopy.
-    box(g, 28, 5.2, 10.4, material('#f4f6f1'), 0, 2.6, 0);
-    box(g, 28.8, .52, 10.8, shared.blue, 0, 5.1, 0);
-    box(g, 25.2, .42, 9.2, material('#e8f1f0'), 0, 5.57, .1);
+    // Interior shell: floor, structural side walls and a glass rear wall.
+    // The centre roof is separately grouped for a player-controlled cutaway view.
+    box(g, 27.4, .24, 9.8, material('#c9d4d7'), 0, .12, 0, false, true);
+    box(g, .34, 5.2, 10.2, material('#e5ece9'), -13.72, 2.6, 0);
+    box(g, .34, 5.2, 10.2, material('#e5ece9'), 13.72, 2.6, 0);
+    box(g, 27.4, 5.2, .34, material('#e5ece9'), 0, 2.6, 5.0);
+    const roof = new THREE.Group();
+    this.terminalRoof = roof;
+    g.add(roof);
+    box(roof, 28.8, .52, 10.8, shared.blue, 0, 5.1, 0);
+    box(roof, 25.2, .42, 9.2, material('#e8f1f0'), 0, 5.57, .1);
     box(g, 26.4, 3.55, .2, shared.glass, 0, 2.45, -5.31, false);
     for (let x = -12; x <= 12; x += 3) {
       box(g, .15, 3.75, .25, shared.blueDark, x, 2.4, -5.45, false);
@@ -387,13 +396,67 @@ export class AirportWorld {
     box(g, 11, .34, 2.6, shared.orange, 0, 3.85, -6.35);
     for (const x of [-4.8, 4.8]) cylinder(g, .12, .12, 3.7, shared.dark, x, 1.95, -6.85, 10);
 
+    // Check-in and bag-drop desks with monitors and overhead information sign.
+    const counterTop = material('#edf3f2', .38, .04);
+    const counterFront = material('#315f7a', .45, .08);
+    for (let i = 0; i < 5; i++) {
+      const x = -10 + i * 4.2;
+      box(g, 3.0, .9, 1.05, counterFront, x, .58, 2.5);
+      box(g, 3.05, .13, 1.13, counterTop, x, 1.09, 2.5);
+      box(g, .65, .62, .12, shared.dark, x + .72, 1.46, 2.12);
+      box(g, .56, .42, .035, shared.glass, x + .72, 1.47, 2.04, false);
+    }
+    const checkSign = makeTextLabel('CHECK-IN · BAG DROP', '#ffffff', [8, 1, 1]);
+    checkSign.position.set(0, 3.45, 3.0); g.add(checkSign);
+
+    // Security screening: three metal-detector gates and X-ray conveyors.
+    for (let i = 0; i < 3; i++) {
+      const x = 7.1 + i * 2.2;
+      box(g, .14, 2.25, .22, shared.blue, x - .8, 1.12, -.1);
+      box(g, .14, 2.25, .22, shared.blue, x + .8, 1.12, -.1);
+      box(g, 1.72, .16, .22, shared.blue, x, 2.2, -.1);
+      box(g, 1.5, .62, 1.2, counterFront, x, .42, -1.0);
+      box(g, 1.65, .12, 1.3, counterTop, x, .79, -1.0);
+      box(g, .6, .7, .65, shared.dark, x + .9, .42, -1.0);
+    }
+    const securitySign = makeTextLabel('SECURITY CONTROL', '#ffffff', [5.4, .8, 1]);
+    securitySign.position.set(9.2, 3.0, .3); g.add(securitySign);
+
+    // Baggage reclaim carousel with a moving-belt-style oval profile and luggage.
+    const carousel = new THREE.Group(); carousel.position.set(-8.3, .22, -2.45); g.add(carousel);
+    const belt = new THREE.Mesh(new THREE.TorusGeometry(2.5, .27, 8, 42), material('#354a54', .72, .12));
+    belt.rotation.x = Math.PI / 2; belt.scale.set(1.38, .74, 1); belt.castShadow = true; carousel.add(belt);
+    const island = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.9, .35, 32), material('#b8c5c4'));
+    island.position.y = .03; carousel.add(island);
+    for (let i = 0; i < 7; i++) {
+      const angle = i * Math.PI * 2 / 7;
+      box(carousel, .42, .38, .34, material(i % 2 ? '#c47b45' : '#3f6687'), Math.cos(angle) * 2.35, .55, Math.sin(angle) * 1.24);
+    }
+    const baggageSign = makeTextLabel('BAGGAGE RECLAIM', '#ffffff', [5.5, .8, 1]);
+    baggageSign.position.set(-8.3, 2.65, -4.4); g.add(baggageSign);
+
+    // Departure lounge, gate desks and the retail frontage.
+    for (let row = 0; row < 2; row++) for (let i = 0; i < 5; i++) {
+      const x = -1 + i * 2.1, z = -3.8 + row * 1.25;
+      box(g, 1.55, .16, .62, shared.blueDark, x, .56, z);
+      for (const dx of [-.58, .58]) box(g, .1, .55, .58, shared.silver, x + dx, .28, z);
+      box(g, .14, .52, .62, shared.dark, x, .28, z + .35);
+    }
+    box(g, 4.4, 1.0, 1.2, material('#6c7f83'), -10.3, .65, -.35);
+    box(g, 4.5, .12, 1.3, shared.orange, -10.3, 1.22, -.35);
+    const retailSign = makeTextLabel('SKY SHOP · CAFE', '#ffffff', [5.8, .8, 1]);
+    retailSign.position.set(-10.3, 2.65, .0); g.add(retailSign);
+    box(g, .3, 3.25, 10.0, shared.blueDark, 13.45, 1.62, 0);
+    const gateSign = makeTextLabel('GATES 01—04', '#ffffff', [4.8, .8, 1]);
+    gateSign.position.set(11.4, 3.35, -3.4); g.add(gateSign);
+
     // Roof skylights and an oversized arcade-style terminal sign.
     for (let x = -9; x <= 9; x += 4.5) {
-      box(g, 2.8, .08, 5.0, shared.glass, x, 5.83, .25, false);
+      box(roof, 2.8, .08, 5.0, shared.glass, x, 5.83, .25, false);
     }
-    box(g, 7.1, .9, .22, shared.dark, 0, 4.55, -5.54, false);
+    box(roof, 7.1, .9, .22, shared.dark, 0, 4.55, -5.54, false);
     const sign = makeTextLabel('SKYPORT', '#fffdf5', [6.1, 1.0, 1]);
-    sign.position.set(0, 4.55, -5.72); g.add(sign);
+    sign.position.set(0, 4.55, -5.72); roof.add(sign);
 
     // Rounded terminal wings and rooftop air-conditioning pods.
     for (const side of [-1, 1]) {
@@ -413,6 +476,20 @@ export class AirportWorld {
       box(g, .15, .65, .7, shared.dark, x - 1.2, .25, -8.5);
       box(g, .15, .65, .7, shared.dark, x + 1.2, .25, -8.5);
     }
+  }
+
+  setTerminalInteriorMode(enabled) {
+    this.terminalInteriorMode = Boolean(enabled);
+    if (this.terminalRoof) this.terminalRoof.visible = !this.terminalInteriorMode;
+    if (this.terminalInteriorMode) {
+      this.controls.target.set(0, 1.7, 21);
+      this.camera.position.set(0, 31, 59);
+      this.camera.zoom = 1.55;
+    } else {
+      this.focusAirport();
+    }
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
   }
 
   createEnvironment() {

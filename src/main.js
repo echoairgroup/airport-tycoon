@@ -11,6 +11,7 @@ let world;
 let currentTab = 'overview';
 let selectedBuild = null;
 let selectedCategory = 'All';
+let terminalInteriorVisible = false;
 let lastFrame = performance.now();
 let lastAutosave = 0;
 let lastSimulationNotification = 0;
@@ -146,7 +147,7 @@ function renderPanel() {
   const content=$('panel-content');
   if(!content) return;
   const template={
-    overview:renderOverview, operations:renderOperations, atc:renderATC, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    overview:renderOverview, operations:renderOperations, atc:renderATC, terminal:renderTerminal, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
     employees:renderEmployees, passengers:renderPassengers, finances:renderFinances, contracts:renderContracts,
     research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
@@ -237,6 +238,19 @@ function renderATC() {
     '<div class="section-title"><h3>Arrival sequence</h3><span class="muted-label">' + holding.length + ' AIRCRAFT HOLDING</span></div>' +
     (holding.length ? holding.map((flight,i)=>'<div class="facility-row"><span>' + (i+1) + '. ' + flight.id + ' · ' + flight.airline + '</span><b>' + flight.destination + '</b></div>').join('') : '<div class="empty-state">No aircraft are currently in the holding pattern.</div>') +
     '<div class="info-note"><b>Control model</b><span>The runway and taxiway are protected by exclusive reservations. Closing a runway prevents new landings and take-offs; a runway cannot be closed while an aircraft is using it.</span></div>';
+}
+
+function renderTerminal() {
+  const active=activeFlightList();
+  const boarding=active.filter(f=>f.phase==='boarding').length;
+  const baggage=active.filter(f=>['baggage-unload','cargo-unload'].includes(f.phase)).length;
+  const gates=1+extraGates();
+  return panelHeader('PASSENGER TERMINAL','Terminal interior','Inspect the passenger journey from check-in through security, departure lounge, boarding and baggage reclaim.')+
+    '<div class="terminal-view-card"><div><small>3D CUTAWAY VIEW</small><b>'+(terminalInteriorVisible?'INTERIOR INSPECTION ACTIVE':'EXTERIOR VIEW')+'</b><span>Check-in · Security · Retail · Gates · Baggage reclaim</span></div><button class="primary-small" data-action="terminal-view">'+(terminalInteriorVisible?'RETURN TO AIRPORT':'OPEN INTERIOR VIEW')+'</button></div>'+
+    '<div class="traffic-counts"><div><small>ACTIVE FLIGHTS</small><b>'+active.length+'</b></div><div><small>BOARDING</small><b>'+boarding+'</b></div><div><small>BAGGAGE HANDLING</small><b>'+baggage+'</b></div><div><small>GATES</small><b>'+gates+'</b></div></div>'+
+    '<div class="section-title"><h3>Passenger journey</h3><span class="muted-label">TERMINAL PROCESSES</span></div>'+
+    '<div class="terminal-process-list"><div><i>01</i><b>Check-in & bag drop</b><small>Passengers receive boarding documents and hand over hold luggage.</small></div><div><i>02</i><b>Security screening</b><small>Passenger and cabin-baggage checks before airside access.</small></div><div><i>03</i><b>Departure lounge & retail</b><small>Waiting, seating, food, shopping and gate announcements.</small></div><div><i>04</i><b>Gate & boarding</b><small>Boarding is simulated as a timed turnaround task for each flight.</small></div><div><i>05</i><b>Baggage reclaim</b><small>Arriving passengers collect luggage while the aircraft is turned around.</small></div></div>'+
+    '<div class="info-note"><b>Visual and simulation scope</b><span>The terminal is now a visible cutaway with check-in desks, security lanes, seating, retail and a baggage carousel. Boarding and baggage tasks affect flight turnaround. Individual passengers are still a lightweight crowd simulation, not yet individually routed through every queue or scanned by a staffed security agent.</span></div>';
 }
 
 function renderFlights() {
@@ -460,6 +474,11 @@ function advanceTutorial(skip = false) {
 }
 
 function handlePanelClick(e) {
+  if(e.target.closest('[data-action="terminal-view"]')){
+    terminalInteriorVisible=!terminalInteriorVisible;
+    world.setTerminalInteriorMode(terminalInteriorVisible);
+    renderPanel();return;
+  }
   const land=e.target.closest('[data-land-side]');
   if(land){
     const result=purchaseLandParcel(state,land.dataset.landSide);
