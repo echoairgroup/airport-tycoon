@@ -96,6 +96,7 @@ export function loadGame() {
     ensureAirportExpansionState(expansionState);
     parsed.expansion = expansionState.expansion;
     parsed.nextFlightAt = Number.MAX_SAFE_INTEGER;
+    parsed.activeFlight = null;
     const elapsedHours = Math.max(0, Math.min(8, (Date.now() - (parsed.lastRealTime || Date.now())) / 3600000));
     if (elapsedHours > .01) {
       const staffCost = Object.values(parsed.staff || {}).reduce((a, b) => a + b, 0) * 32;

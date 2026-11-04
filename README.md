@@ -58,3 +58,9 @@ This is a stable single-player browser release. One scheduled aircraft is active
 ## GitHub Pages
 
 The HTML loads both stylesheets with relative paths and Vite generates the production CSS asset. GitHub Actions runs the gameplay and construction tests, builds the site, verifies the stylesheet and deploys the Pages artifact on pushes to `main`.
+
+
+## 2.0 implementation notes
+This release uses a simplified single-runway traffic controller: only one aircraft holds the runway reservation for a landing or take-off roll at a time. Ground movements are game routes, not real-world A-SMGCS or a certified ATC model. The world map is schematic and the aircraft fleet uses shared category models; airline-specific aircraft liveries and real-world flight data are not connected.
+
+Internet multiplayer is shown as a planned system only. The live site is static GitHub Pages with browser-local saves; online co-op requires an authenticated realtime backend and server-side authoritative game state. Audio effects are procedural browser tones, not recordings.

@@ -34,6 +34,7 @@ const timeLabel = minutes => `${String(Math.floor(minutes / 60) % 24).padStart(2
 const totalStaff = () => Object.values(state.staff).reduce((a,b)=>a+b,0);
 const extraGates = () => state.buildings.filter(b=>b.type==='gate').length;
 const allBuildings = () => state.buildings.length + 3;
+const isSandbox = () => state.expansion?.mode === 'sandbox';
 
 function bootWorld() {
   world = new AirportWorld($('game-world'), onWorldClick, onWorldHover);
@@ -314,7 +315,7 @@ function renderFinances() {
 function renderResearch() {
   return `${panelHeader('AIRPORT INNOVATION','Research & technology','Invest in improvements that have a measurable effect on airport operations.')}
   ${state.researchInProgress?`<div class="research-progress"><div class="research-progress-icon">⌘</div><div><small>RESEARCH IN PROGRESS</small><b>${RESEARCH.find(r=>r.id===state.researchInProgress.id)?.name}</b><div class="mini-progress"><div style="width:${Math.max(0,100-state.researchInProgress.remaining/RESEARCH.find(r=>r.id===state.researchInProgress.id).duration*100)}%"></div></div><small>${Math.ceil(state.researchInProgress.remaining)} game minutes remaining</small></div></div>`:''}
-  <div class="research-list">${RESEARCH.map(r=>{const researched=state.research.includes(r.id), active=state.researchInProgress?.id===r.id, locked=state.level<r.level;return `<div class="research-card ${researched?'researched':''} ${locked?'locked':''}"><div class="research-icon">${r.icon}</div><div class="research-info"><small>${r.category.toUpperCase()}</small><b>${r.name}</b><p>${r.description}</p><span>Cost ${fmt(r.cost)} · ${r.duration} game minutes · Level ${r.level}</span></div><button class="research-button" data-research="${r.id}" ${researched||active||locked||state.researchInProgress?'disabled':''}>${researched?'✓ COMPLETE':active?'IN PROGRESS':locked?`LEVEL ${r.level}`:'RESEARCH'}</button></div>`;}).join('')}</div>
+  <div class="research-list">${RESEARCH.map(r=>{const researched=state.research.includes(r.id), active=state.researchInProgress?.id===r.id, locked=!isSandbox()&&state.level<r.level;return `<div class="research-card ${researched?'researched':''} ${locked?'locked':''}"><div class="research-icon">${r.icon}</div><div class="research-info"><small>${r.category.toUpperCase()}</small><b>${r.name}</b><p>${r.description}</p><span>Cost ${fmt(r.cost)} · ${r.duration} game minutes · Level ${r.level}</span></div><button class="research-button" data-research="${r.id}" ${researched||active||locked||state.researchInProgress?'disabled':''}>${researched?'✓ COMPLETE':active?'IN PROGRESS':locked?`LEVEL ${r.level}`:'RESEARCH'}</button></div>`;}).join('')}</div>
   <div class="info-note"><b>Research benefits</b><span>Research advances in game time. Only one project can run at a time. Completed technologies remain active for the rest of your save.</span></div>`;
 }
 
@@ -459,7 +460,7 @@ function renderStatistics() {
 function renderSettings() {
   return `${panelHeader('GAME OPTIONS','Settings','Manage your save, simulation preferences and visual quality.')}
   <div class="settings-group"><h3>Graphics</h3><div class="setting-row"><div><b>Rendering quality</b><small>Lower quality can improve performance on older computers.</small></div><select id="quality-select"><option ${graphicsQuality==='High'?'selected':''}>High</option><option ${graphicsQuality==='Medium'?'selected':''}>Medium</option><option ${graphicsQuality==='Low'?'selected':''}>Low</option></select></div></div>
-  <div class="settings-group"><h3>Audio & ambience</h3><div class="setting-row"><div><b>Airport soundscape</b><small>Procedural terminal ambience and notification / radio-style tones. Enable from a user click.</small></div><button class="secondary-small" data-airport-audio>' + (isAirportAudioEnabled()?'TURN SOUND OFF':'TURN SOUND ON') + '</button></div></div>
+  <div class="settings-group"><h3>Audio & ambience</h3><div class="setting-row"><div><b>Airport soundscape</b><small>Procedural terminal ambience and notification / radio-style tones. Enable from a user click.</small></div><button class="secondary-small" data-airport-audio>${isAirportAudioEnabled()?'TURN SOUND OFF':'TURN SOUND ON'}</button></div></div>
   <div class="settings-group"><h3>Simulation</h3><div class="setting-row"><div><b>Automatic saving</b><small>Your airport is saved automatically every 10 seconds.</small></div><span class="status-pill active">ENABLED</span></div><div class="setting-row"><div><b>Game speed</b><small>Choose the speed from the controls at the bottom of the screen.</small></div><b>${state.speed===0?'Paused':`${state.speed}×`}</b></div></div>
   <div class="settings-group"><h3>Save management</h3><div class="setting-actions"><button class="primary-small" data-action="save">▣ Save now</button><button class="secondary-small" data-action="load">↶ Load saved game</button><button class="danger-small" data-action="new-game">＋ New airport</button></div><small class="save-detail">Save data is stored locally in this browser. Clearing browser storage can remove the save.</small></div>`;
 }
@@ -569,7 +570,7 @@ function handlePanelClick(e) {
   if(demolish){
     const building=state.buildings.find(item=>item.id===demolish.dataset.demolish);
     if(!building)return;
-    if(state.activeFlight?.gateId===building.id){notifyLocal('Gate in use','Wait until the aircraft has departed before removing this gate.','warning');return;}
+    if(state.activeFlight?.gateId===building.id||(state.expansion?.activeFlights||[]).some(f=>f.gateId===building.id)){notifyLocal('Gate in use','Wait until the aircraft has departed before removing this gate.','warning');return;}
     const dependentContract=(state.activeContracts||[]).find(contract=>contract.requiredBuilding===building.type);
     if(dependentContract){
       notifyLocal('Facility required by contract',`Complete or cancel ${dependentContract.name} before selling this facility.`,'warning');
@@ -624,7 +625,7 @@ function handlePanelClick(e) {
     }else if(state.money<cost){
       notifyLocal('Not enough funds',`Runway repair requires ${fmt(cost)}.`,'warning');
     }else{
-      addMoney(state,-cost);
+      if(!isSandbox())addMoney(state,-cost);
       state.runwayCondition=100;
       notifyLocal('Runway repaired','The runway surface is back to 100% condition.','success');
       refreshHUD();

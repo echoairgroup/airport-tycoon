@@ -881,7 +881,7 @@ export class AirportWorld {
       cylinder(root, .3, .3, .6, shared.dark, 0, 5.25, 0, 12);
       const label = makeTextLabel('JET A-1', '#fff', [3.6, .75, 1]); label.position.set(0, 2.55, -2.55); root.add(label);
       box(root, 2.5, .35, 2.5, shared.orange, 0, .18, 3.5);
-    }
+    } else if (type === 'checkin') {
       box(root, 14, 4.2, 10, material('#e8f0ed'), 0, 2.1, 0);
       box(root, 14.4, .4, 10.4, shared.blue, 0, 4.3, 0);
       for (let i = 0; i < 4; i++) {
@@ -1285,6 +1285,10 @@ export class AirportWorld {
     this.renderer.domElement.removeEventListener('pointerup', this._onPointerUp);
     this.renderer.domElement.removeEventListener('contextmenu', this._onContextMenu);
     this.controls.dispose();
+    for (const mesh of this.trafficAircraft.values()) {
+      mesh.traverse(object => { if (object.geometry) object.geometry.dispose(); });
+      this.scene.remove(mesh);
+    }
     this.trafficAircraft.clear();
     this.renderer.dispose();
     this.renderer.domElement.remove();
