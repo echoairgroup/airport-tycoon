@@ -2,12 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getPlacementStatus } from '../src/engine/placement.js';
 import { INITIAL_STATE } from '../src/data.js';
-import { hourlyExpenses, hourlyIncome, settleFlight } from '../src/engine/economy.js';
+import { applyHourlyCashFlow, hourlyExpenses, hourlyIncome, settleFlight } from '../src/engine/economy.js';
 import { progressContracts, resolveIncident } from '../src/engine/simulation.js';
 
 test('allows a facility on a clear service-yard plot', () => {
   assert.equal(getPlacementStatus('cafe', 0, 39).valid, true);
 });
+test('allows construction across the expanded service yard', () => {
+  assert.equal(getPlacementStatus('cafe', 72, 82).valid, true);
+});
+
+test('blocks construction beyond the expanded airport boundary', () => {
+  const result = getPlacementStatus('parking', 96, 82);
+  assert.equal(result.valid, false);
+  assert.match(result.reason, /Outside airport boundary/i);
+});
+
+test('deposits recurring hourly income into the bank balance', () => {
+  const state = INITIAL_STATE();
+  const before = state.money;
+  const income = hourlyIncome(state);
+  const expenses = hourlyExpenses(state);
+  const result = applyHourlyCashFlow(state, 1);
+  assert.ok(income > expenses, 'the starter airport should have a positive recurring cash flow');
+  assert.equal(result.income, income);
+  assert.equal(result.expenses, expenses);
+  assert.ok(Math.abs(state.money - (before + (income - expenses) / 60)) < 0.02);
+  assert.ok(state.lifetimeRevenue > 0);
+  assert.ok(state.lifetimeExpenses > 0);
+});
+
+test('hourly revenue covers the starter airport operating costs', () => {
+  const state = INITIAL_STATE();
+  assert.ok(hourlyIncome(state) > hourlyExpenses(state));
+});
+
 
 test('blocks placement inside the runway / apron zone for service buildings', () => {
   const result = getPlacementStatus('cafe', 0, -16);
@@ -39,7 +68,7 @@ test('blocks a gate on top of the initial Gate 01 stand', () => {
 });
 
 test('blocks a facility whose footprint leaves the service yard boundary', () => {
-  const result = getPlacementStatus('parking', 48, 39);
+  const result = getPlacementStatus('parking', 96, 39);
   assert.equal(result.valid, false);
   assert.match(result.reason, /boundary/i);
 });
@@ -96,7 +125,7 @@ test('airport hotel adds passive hourly income', () => {
   const standard = INITIAL_STATE();
   const hotel = INITIAL_STATE();
   hotel.buildings.push({ id: 'hotel-1', type: 'hotel', upkeep: 245 });
-  assert.equal(hourlyIncome(hotel) - hourlyIncome(standard), 520);
+  assert.equal(hourlyIncome(hotel) - hourlyIncome(standard), 950);
 });
 
 test('qualified teams resolve incidents at the staffed response cost', () => {

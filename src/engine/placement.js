@@ -28,7 +28,7 @@ export function getPlacementStatus(type, x, z, placedBuildings = []) {
     return { valid: true, reason: 'Valid runway connection' };
   }
 
-  if (Math.abs(x) + w / 2 > 55 || z - d / 2 < -48 || z + d / 2 > 46) {
+  if (Math.abs(x) + w / 2 > 90 || z - d / 2 < -48 || z + d / 2 > 109) {
     return { valid: false, reason: 'Outside airport boundary' };
   }
 
@@ -52,13 +52,13 @@ export function getPlacementStatus(type, x, z, placedBuildings = []) {
   }
 
   // Non-airside facilities belong in the marked service yard behind the terminal.
-  if (z - d / 2 < 30.5 || z + d / 2 > 46) {
+  if (z - d / 2 < 30.5 || z + d / 2 > 109) {
     return { valid: false, reason: 'Place this facility in the marked service yard' };
   }
   const fixedObstacles = [
     { x: -38, z: 34, w: 8, d: 6, label: 'Maintenance shed' },
     { x: 0, z: 21, w: 31, d: 13, label: 'Main terminal' },
-    { x: 0, z: 49.2, w: 120, d: 5, label: 'Airport service road' },
+    { x: 0, z: 114, w: 190, d: 8, label: 'Airport service road' },
   ];
   for (const obstacle of fixedObstacles) {
     if (rectanglesOverlap(candidate, obstacle, .8)) {

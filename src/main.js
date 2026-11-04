@@ -1,7 +1,7 @@
 import { AirportWorld } from './world/World.js';
 import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from './data.js';
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
-import { hourlyExpenses, hourlyIncome, addMoney } from './engine/economy.js';
+import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney } from './engine/economy.js';
 import { tickGame, flightPhaseLabel, giveXP, resolveIncident } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
 
@@ -204,7 +204,7 @@ function renderOverview() {
 function renderBuild() {
   const cats=['All','Operations','Passenger','Transport','Safety','Infrastructure','Logistics'];
   const items=BUILDINGS.filter(b=>(selectedCategory==='All'||b.category===selectedCategory));
-  return `${panelHeader('AIRPORT DEVELOPMENT','Build & expand','Choose a plot in the marked service yard. Buildings have real footprints and cannot overlap infrastructure or other facilities.',`<button class="small-action" data-action="cancel-build">✕ Cancel placement</button>`)}
+  return `${panelHeader('AIRPORT DEVELOPMENT','Build & expand','Choose from the expanded construction campus behind the terminal. Buildings have real footprints and cannot overlap infrastructure or other facilities.',`<button class="small-action" data-action="cancel-build">✕ Cancel placement</button>`)}
   <div class="category-tabs">${cats.map(c=>`<button class="category-tab ${selectedCategory===c?'active':''}" data-category="${c}">${c}</button>`).join('')}</div>
   <div class="build-list">${items.map(b=>{const locked=state.level<b.level;const active=selectedBuild===b.id;return `<div class="build-card ${locked?'locked':''} ${active?'selected':''}"><div class="build-icon">${b.icon}</div><div class="build-info"><div class="build-title-row"><b>${b.name}</b>${locked?`<span class="lock-label">LVL ${b.level}</span>`:`<span class="available-label">AVAILABLE</span>`}</div><p>${b.description}</p><div class="build-meta"><span>↗ ${fmt(b.cost)}</span><span>⌁ ${fmt(b.upkeep)}/hr</span><span>⌂ ${b.category}</span></div></div><button class="build-select ${active?'chosen':''}" data-build="${b.id}" ${locked?'disabled':''}>${locked?'LOCKED':active?'SELECTED':'PLACE'}</button></div>`;}).join('')}</div>
   <div class="section-title"><h3>Your facilities</h3><span class="muted-label">${state.buildings.length} BUILT · 55% REFUND</span></div>
@@ -241,14 +241,36 @@ function renderPassengers() {
   <div class="section-title"><h3>Passenger facilities</h3><span class="muted-label">OPERATIONAL EFFECT</span></div><div class="facility-row"><span>🏢 Terminal processing</span><b class="good-text">${capacity} passenger capacity</b></div><div class="facility-row"><span>☕ Food & beverage</span><b>${state.buildings.filter(b=>b.type==='cafe').length} cafés</b></div><div class="facility-row"><span>🛍️ Shopping</span><b>${state.buildings.filter(b=>b.type==='shop').length} shops</b></div><div class="facility-row"><span>🧹 Cleaning coverage</span><b>${state.staff.cleaning} employees</b></div>`;
 }
 function renderFinances() {
-  const income=hourlyIncome(state), expenses=hourlyExpenses(state), net=income-expenses;
-  const history=state.financialHistory.slice(-10); const max=Math.max(1,...history.map(x=>Math.max(x.income,x.expenses)));
-  return `${panelHeader('AIRPORT ECONOMY','Finances','Track revenue, operating costs and your airport’s financial health.')}
-  <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} estimated net per game hour</span></div><div class="balance-icon">€</div></div>
-  <div class="stat-grid">${statCard('EST. HOURLY INCOME',fmt(income),'Flights and airport services','↗','teal')}${statCard('HOURLY EXPENSES',fmt(expenses),'Staff and maintenance','↘','orange')}${statCard('LIFETIME REVENUE',fmt(state.lifetimeRevenue),'Total earned','€','purple')}</div>
+  const incomeParts = hourlyIncomeBreakdown(state);
+  const expenseParts = hourlyExpenseBreakdown(state);
+  const income = Math.round(Object.values(incomeParts).reduce((sum, value) => sum + value, 0));
+  const expenses = Math.round(Object.values(expenseParts).reduce((sum, value) => sum + value, 0));
+  const net = income - expenses;
+  const history = state.financialHistory.slice(-10);
+  const max = Math.max(1, ...history.map(x => Math.max(x.income, x.expenses)));
+  const incomeLabels = [
+    ['Airport & flight services', incomeParts.airportServices],
+    ['Aircraft gate services', incomeParts.gateServices],
+    ['Retail and concessions', incomeParts.retail],
+    ['Passenger parking', incomeParts.parking],
+    ['Airport hotel', incomeParts.hotels],
+    ['Cargo operations', incomeParts.cargo],
+  ];
+  const expenseLabels = [
+    ['Employee wages', expenseParts.wages],
+    ['Base airport operations', expenseParts.baseOperations],
+    ['Building maintenance', expenseParts.buildingMaintenance],
+    ['Runway wear & maintenance', expenseParts.runwayMaintenance],
+  ];
+  return `${panelHeader('AIRPORT ECONOMY','Finances','See every recurring payment and watch the money actually enter or leave your airport account.')}
+  <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} net per game hour · automatically paid</span></div><div class="balance-icon">€</div></div>
+  <div class="stat-grid">${statCard('HOURLY INCOME',fmt(income),'Deposited automatically','↗','teal')}${statCard('HOURLY EXPENSES',fmt(expenses),'Debited automatically','↘','orange')}${statCard('LIFETIME REVENUE',fmt(state.lifetimeRevenue),'Total earned','€','purple')}</div>
+  <div class="info-note"><b>How the cash flow works</b><span>Income and costs are both applied directly to your bank balance as the simulation runs. Every 60 in-game minutes, one full game-hour of income and expenses is booked.</span></div>
+  <div class="content-card"><div class="card-heading"><h3>Recurring income</h3><span class="muted-label">PER GAME HOUR</span></div>${incomeLabels.map(([label,value])=>`<div class="facility-row"><span>${label}</span><b class="good-text">+${fmt(value)}</b></div>`).join('')}</div>
+  <div class="content-card"><div class="card-heading"><h3>Operating expenses</h3><span class="muted-label">PER GAME HOUR</span></div>${expenseLabels.map(([label,value])=>`<div class="facility-row"><span>${label}</span><b class="bad-text">−${fmt(value)}</b></div>`).join('')}<div class="facility-row"><span><b>Net recurring result</b></span><b class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)}</b></div></div>
   <div class="content-card chart-card"><div class="card-heading"><h3>Recent flight performance</h3><span class="muted-label">PER COMPLETED FLIGHT</span></div><div class="chart-legend"><span><i class="legend-income"></i> Revenue</span><span><i class="legend-expense"></i> Expenses</span></div><div class="bar-chart">${history.map(h=>`<div class="bar-group"><div class="bar-pair"><i class="bar-income" style="height:${Math.max(2,h.income/max*100)}%" title="Revenue ${fmt(h.income)}"></i><i class="bar-expense" style="height:${Math.max(2,h.expenses/max*100)}%" title="Expenses ${fmt(h.expenses)}"></i></div><small>${h.label}</small></div>`).join('')||'<div class="empty-state">Complete a flight to start building your financial history.</div>'}</div></div>
   <div class="maintenance-card"><div><small>RUNWAY SURFACE CONDITION</small><strong>${Math.round(state.runwayCondition ?? 100)}%</strong><p>Landings wear the asphalt. Repair the surface to keep maintenance costs under control.</p><div class="satisfaction-bar"><i style="width:${state.runwayCondition ?? 100}%"></i></div></div><button class="primary-small" data-action="repair-runway" ${(state.runwayCondition ?? 100) >= 99 ? 'disabled' : ''}>REPAIR · ${fmt(Math.round((100-(state.runwayCondition ?? 100))*140+250))}</button></div>
-  <div class="section-title"><h3>Financial breakdown</h3></div><div class="facility-row"><span>Employee wages</span><b>${fmt(totalStaff()*55)} / hr</b></div><div class="facility-row"><span>Base airport operations</span><b>€280 / hr</b></div><div class="facility-row"><span>Building maintenance</span><b>${fmt(state.buildings.reduce((a,b)=>a+b.upkeep,0))} / hr</b></div><div class="facility-row"><span>Runway wear & maintenance</span><b>${fmt(Math.max(0,82-(state.runwayCondition ?? 100))*1.35)} / hr</b></div><div class="facility-row"><span>Parking & retail income</span><b class="good-text">${fmt(state.buildings.filter(b=>b.type==='parking').length*390+state.buildings.filter(b=>['cafe','shop'].includes(b.type)).length*260)} / hr</b></div><div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>`;
+  <div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>`;
 }
 function renderResearch() {
   return `${panelHeader('AIRPORT INNOVATION','Research & technology','Invest in improvements that have a measurable effect on airport operations.')}
@@ -347,7 +369,7 @@ function showTutorial() {
   const steps = [
     ['Welcome to your airport', 'You are in charge of a small regional airport. Your first scheduled aircraft will arrive soon. This guide shows you the most important areas and what to do first.', 'NEXT STEP', 'You start with a terminal, an aircraft gate and €75,000.'],
     ['Move around the 3D world', 'Hold the left mouse button and drag to rotate the camera. Scroll to zoom. Hold the right mouse button and drag to move the view. Zoom in to inspect aircraft and runway markings.', 'NEXT STEP', 'Try zooming in on the apron, then zoom back out.'],
-    ['Learn the airport layout', 'The long marked strip is the runway. Yellow lines lead along the taxiways. Aircraft park on the apron beside terminal gates. Houses and cars outside the fence form the town around your airport.', 'NEXT STEP', 'The runway is for take-offs and landings; aircraft do not park there.'],
+    ['Learn the airport layout', 'The long marked strip is the runway. Yellow lines lead along the taxiways. Aircraft park on the apron beside terminal gates. The much larger service campus behind the terminal is ready for future expansion, with roads, logistics buildings, a town and countryside beyond the perimeter.', 'NEXT STEP', 'The runway is for take-offs and landings; aircraft do not park there.'],
     ['Watch aircraft operations', 'An arrival descends, touches down, rolls along the runway and taxis to a gate. Passengers or freight are handled at the stand. The aircraft then taxis out and takes off again.', 'VIEW FLIGHT BOARD', 'The Flights page shows the current phase and aircraft type.'],
     ['Build new facilities', 'Open Build, choose a facility and move the placement preview over the map. Green means the location is valid; red means something blocks it. Gates belong on the apron, while most other buildings belong in the service yard.', 'OPEN BUILD MENU', 'Press Esc or Cancel to stop a placement.'],
     ['Manage a growing airport', 'Hire staff, watch passenger satisfaction, review income and expenses, and repair the runway when its condition drops. Weather, daylight and seasons change as the simulation runs. Save with the disk button.', 'FINISH TUTORIAL', 'The full reference is always available in Tutorial & Guide.']
