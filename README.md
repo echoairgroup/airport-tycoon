@@ -1,11 +1,13 @@
-# Airport Tycoon — Final Release 1.0
+# Airport Tycoon — Expanded World Update 1.1
 
 A browser-based 3D airport management game built with Three.js and Vite. Build an airport, operate passenger and cargo services, keep the runway reliable, grow your airline network and respond to operational incidents.
 
 ## Final Release 1.0
 
 ### Airport world
-- Isometric 3D airport with a terminal, apron, runway 09/27, taxiways, stand markings, approach lighting and textured asphalt.
+- Much larger continuous 3D region with an expanded construction campus (roughly 184 × 78 world units), a marked airport service road, perimeter fencing and room for future development.
+- Regional airport with terminal, apron, runway 09/27, taxiways, stand markings, approach lighting and textured asphalt.
+- Surrounding road network, larger residential district, local shops, logistics warehouses, cargo truck courts, retention pond, tree belts and distant wind turbines.
 - Procedural passenger aircraft, passenger jets and cargo freighters.
 - Scheduled flight lifecycle: approach, landing, rollout, taxi-in, turnaround, taxi-out and take-off.
 - Two visible parked aircraft, animated passengers, baggage tug and carts.
@@ -18,7 +20,8 @@ A browser-based 3D airport management game built with Three.js and Vite. Build a
 - Employee roles for security, handling, cleaning, maintenance and cargo.
 - Airline contracts with progress tracking, cash rewards, XP and facility requirements.
 - Operational incidents: baggage backlogs, medical assistance, runway debris and freight delays. Dispatch qualified staff or hire an external response before the timer expires.
-- Runway wear, paid repairs, passive income, flight revenue, expenses, research, missions and airport statistics.
+- Runway wear, paid repairs, flight revenue, research, missions and airport statistics.
+- Recurring service income and operating expenses are now both posted to the live cash balance; the finance screen itemises each income and cost category. The starter airport begins with a positive cash flow.
 - Demolish additional buildings for a 55% purchase-price refund. Gates in active use are protected from demolition.
 
 ### Learning and controls
@@ -46,7 +49,7 @@ On Windows, `Start-Airport-Tycoon.bat` starts the local development version and 
 
 ## Saves and compatibility
 
-Saves remain local to the browser. Final Release 1.0 upgrades existing version 1 and version 2 saves to version 3, preserving buildings, staff, finance history and progression while adding contract and incident fields. Saves are not shared between browsers or devices; cloud synchronisation and save export are not included.
+Saves remain local to the browser. The 1.1 update keeps the existing version 1, 2 and 3 save migration path; the enlarged scenery and service-yard area do not reset existing airport progress. Saves are not shared between browsers or devices; cloud synchronisation and save export are not included.
 
 ## Scope notes
 
@@ -54,4 +57,4 @@ This is a stable single-player browser release. One scheduled aircraft is active
 
 ## GitHub Pages
 
-The HTML loads both stylesheets with relative paths and Vite generates the production CSS asset. GitHub Actions runs tests, builds the site, verifies the stylesheet and deploys the Pages artifact on pushes to `main`.
+The HTML loads both stylesheets with relative paths and Vite generates the production CSS asset. GitHub Actions runs the gameplay and construction tests, builds the site, verifies the stylesheet and deploys the Pages artifact on pushes to `main`.
