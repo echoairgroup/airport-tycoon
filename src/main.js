@@ -2,7 +2,7 @@ import { AirportWorld } from './world/World.js';
 import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from './data.js';
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
 import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney, takeLoan, repayLoan, createInvestment } from './engine/economy.js';
-import { tickGame, flightPhaseLabel, giveXP, resolveIncident } from './engine/simulation.js';
+import { tickGame, flightPhaseLabel, giveXP, resolveIncident, clearFlightForApproach } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
 import { createFlightPlan, FLIGHT_AIRLINES, FLIGHT_DESTINATIONS, FLIGHT_AIRCRAFT } from './engine/flight-planning.js';
 
@@ -145,7 +145,7 @@ function renderPanel() {
   const content=$('panel-content');
   if(!content) return;
   const template={
-    overview:renderOverview, operations:renderOperations, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
+    overview:renderOverview, operations:renderOperations, atc:renderAtc, build:renderBuild, flights:renderFlights, aircraft:renderAircraft,
     employees:renderEmployees, passengers:renderPassengers, finances:renderFinances, contracts:renderContracts,
     research:renderResearch, missions:renderMissions, statistics:renderStatistics, settings:renderSettings, guide:renderGuide
   }[currentTab] || renderOverview;
@@ -213,6 +213,23 @@ function renderBuild() {
   <div class="owned-building-list">${state.buildings.map(building=>{const def=BUILDINGS.find(x=>x.id===building.type);const refund=Math.floor((def?.cost||0)*.55);const occupied=state.activeFlight?.gateId===building.id;return `<div class="owned-building-row"><div><b>${def?.icon||'🏗️'} ${building.name||def?.name||building.type}</b><small>${building.type==='gate'?'Aircraft stand':'Service facility'} · ${fmt(building.upkeep||0)} / hr upkeep</small></div><button class="demolish-button" data-demolish="${building.id}" ${occupied?'disabled':''}>${occupied?'IN USE':`SELL · +${fmt(refund)}`}</button></div>`;}).join('')||'<div class="empty-state">No additional buildings yet. Your initial terminal and Gate 01 are permanent infrastructure.</div>'}</div>
   <div class="info-note"><b>Construction tip</b><span>Gates belong on the apron. Other facilities belong in the marked service yard. Demolishing a building refunds 55% of its original purchase price. A gate cannot be removed while an aircraft is using it.</span></div>`;
 }
+function renderAtc() {
+  const flights=activeFlights();
+  const runway=flights.find(f=>['approach','landing-rollout','taxi-out','takeoff'].includes(f.phase));
+  const holding=flights.filter(f=>f.phase==='holding');
+  return \`\${panelHeader('AIR TRAFFIC CONTROL','ATC operations','Manage runway sequencing, arrival holding and stand clearances.')}
+    <div class="operations-hero"><div><small>RUNWAY 09 / 27</small><strong>\${runway?'OCCUPIED · '+runway.id:'RUNWAY AVAILABLE'}</strong><span>\${runway?flightPhaseLabel(runway.phase):'No aircraft on the runway'}</span></div><span class="operations-live-dot"></span></div>
+    <div class="content-card"><div class="card-heading"><h3>Controller mode</h3><span class="status-pill \${state.atcMode==='manual'?'warning':'active'}">\${(state.atcMode||'auto').toUpperCase()}</span></div>
+      <p class="muted-label">Automatic mode clears the next eligible aircraft. Manual mode waits for your clearance.</p>
+      <div class="setting-actions"><button class="secondary-small" data-action="atc-mode" data-mode="auto" \${state.atcMode!=='manual'?'disabled':''}>AUTOMATIC ATC</button><button class="secondary-small" data-action="atc-mode" data-mode="manual" \${state.atcMode==='manual'?'disabled':''}>MANUAL CONTROL</button></div>
+    </div>
+    <div class="section-title"><h3>Arrival holding queue</h3><span class="muted-label">\${holding.length} WAITING</span></div>
+    <div class="content-card">\${holding.map(f=>'<div class="facility-row"><span><b>'+f.id+'</b> · '+f.airline+' · '+f.model+'</span><button class="secondary-small" data-clear-flight="'+f.id+'" '+(runway?'disabled':'')+'>CLEAR TO LAND</button></div>').join('')||'<div class="empty-state">No aircraft are waiting for an ATC clearance.</div>'}</div>
+    <div class="section-title"><h3>Live traffic</h3><span class="muted-label">\${flights.length} ACTIVE</span></div>
+    <div class="table-wrap"><table><thead><tr><th>FLIGHT</th><th>AIRCRAFT</th><th>DESTINATION</th><th>STAND</th><th>PHASE</th></tr></thead><tbody>\${flights.map(f=>'<tr><td><b>'+f.id+'</b></td><td>'+f.model+'</td><td>'+f.destination+'</td><td>'+(f.gateId==='initial-gate'?'01':f.gateId||'HOLD')+'</td><td>'+flightPhaseLabel(f.phase)+'</td></tr>').join('')||'<tr><td colspan="5" class="table-empty">No active movements.</td></tr>'}</tbody></table></div>
+    <div class="info-note"><b>Runway protection</b><span>The simulator prevents two aircraft from occupying runway phases simultaneously. Each arriving aircraft must also reserve an available stand before it receives an approach clearance.</span></div>\`;
+}
+
 function renderFlights() {
   const flights=activeFlights(), queued=state.flightPlanQueue||[];
   const activeRows=flights.map(f=>'<tr><td><b>'+f.id+'</b></td><td>'+f.airline+'</td><td>'+f.model+'</td><td>'+f.destination+'</td><td>'+(f.gateId==='initial-gate'?'01':f.gateId||'HOLD')+'</td><td><span class="status-pill active">'+flightPhaseLabel(f.phase)+'</span></td></tr>').join('');
@@ -430,6 +447,22 @@ function handlePanelClick(e) {
   const staff=e.target.closest('[data-staff]');if(staff){const role=staff.dataset.staff,delta=Number(staff.dataset.delta);if(delta>0){const cost=1250;if(state.money<cost){notifyLocal('Not enough funds',`Hiring costs ${fmt(cost)}.`,'warning');return;}addMoney(state,-cost);state.staff[role]++;notifyLocal('Employee hired',`${role[0].toUpperCase()+role.slice(1)} staff increased to ${state.staff[role]}.`,'success');}else{if(state.staff[role]<=0)return;state.staff[role]--;notifyLocal('Employee released',`${role[0].toUpperCase()+role.slice(1)} staff reduced to ${state.staff[role]}.`,'info');}renderPanel();refreshHUD();return;}
   const research=e.target.closest('[data-research]');if(research){const r=RESEARCH.find(x=>x.id===research.dataset.research);if(!r||state.research.includes(r.id)||state.researchInProgress)return;if(state.money<r.cost){notifyLocal('Not enough funds',`Research requires ${fmt(r.cost)}.`,'warning');return;}addMoney(state,-r.cost);state.researchInProgress={id:r.id,remaining:r.duration};notifyLocal('Research started',`${r.name} is now in development.`,'success');renderPanel();refreshHUD();return;}
   const claim=e.target.closest('[data-claim]');if(claim){const m=MISSION_DEFS.find(x=>x.id===claim.dataset.claim);if(!m||state.missionsClaimed.includes(m.id)||missionProgress(m)<m.goal)return;state.missionsClaimed.push(m.id);addMoney(state,m.reward);giveXP(state,m.xp);notifyLocal('Mission completed',`${m.title}: ${fmt(m.reward)} and ${m.xp} XP earned.`,'success');renderPanel();refreshHUD();return;}
+
+  const atcModeButton=e.target.closest('[data-action="atc-mode"]');
+  if(atcModeButton){
+    state.atcMode=atcModeButton.dataset.mode==='manual'?'manual':'auto';
+    notifyLocal('ATC mode changed',state.atcMode==='manual'?'Manual clearance enabled. Waiting aircraft need controller approval.':'Automatic runway sequencing enabled.','info');
+    renderPanel();saveNow(false);return;
+  }
+  const clearFlightButton=e.target.closest('[data-clear-flight]');
+  if(clearFlightButton){
+    const result=clearFlightForApproach(state,clearFlightButton.dataset.clearFlight);
+    if(!result.ok){
+      const message=result.reason==='runway-busy'?'The runway is currently occupied.':'No free aircraft stand is available.';
+      notifyLocal('Landing clearance refused',message,'warning');
+    }else notifyLocal('Landing clearance issued',clearFlightButton.dataset.clearFlight+' cleared to land and assigned stand '+(result.gateId==='initial-gate'?'01':result.gateId)+'.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
 
   const scheduleFlight=e.target.closest('[data-action="schedule-flight"]');
   if(scheduleFlight){
