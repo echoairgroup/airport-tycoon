@@ -387,7 +387,7 @@ function refreshHUD() {
   $('xp-next').textContent=`NEXT: LEVEL ${state.level+1}`;
   $('xp-fill').style.width=`${Math.min(100,state.xp/(state.level*500)*100)}%`;
   document.querySelectorAll('.speed-button').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===state.speed));
-  world.syncFlight(state.activeFlight); world.setTimeOfDay(state.gameMinutes);
+  world.syncFlights(activeFlights()); world.setTimeOfDay(state.gameMinutes);
 }
 
 
@@ -597,7 +597,7 @@ function animate(now) {
     if(Math.floor(state.gameMinutes/5)!==Math.floor((state._lastPanelTick||0)/5)){if(['missions','overview','flights','operations','contracts','finances'].includes(currentTab))renderPanel();state._lastPanelTick=state.gameMinutes;}
     if(oldWeather!==state.weather)world.setWeather(state.weather);
     world.setTimeOfDay(state.gameMinutes);
-    world.syncFlight(state.activeFlight);
+    world.syncFlights(activeFlights());
     if(now-lastAutosave>10000){saveNow(false);lastAutosave=now;}
     if(now%400<18)refreshHUD();
   }
