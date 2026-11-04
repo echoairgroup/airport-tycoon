@@ -68,7 +68,7 @@ test('blocks a gate on top of the initial Gate 01 stand', () => {
 });
 
 test('blocks a facility whose footprint leaves the service yard boundary', () => {
-  const result = getPlacementStatus('parking', 48, 39);
+  const result = getPlacementStatus('parking', 96, 39);
   assert.equal(result.valid, false);
   assert.match(result.reason, /boundary/i);
 });
