@@ -58,7 +58,7 @@ Saves remain local to the browser. The 1.2 update migrates existing version 1, 2
 
 ## Scope notes
 
-This is a stable single-player browser release. This remains a browser-based single-player simulation. The new ATC layer sequences aircraft on the runway and reserves stands, but it is not certified real-world air traffic control and does not yet include full multi-aircraft taxiway pathfinding. Multiplayer, cloud saves, networked airline dispatch, full terminal traversal and production audio are later development phases; the airport remains hosted as a static GitHub Pages site.
+This is a single-player browser simulation. The new ATC layer sequences aircraft on the runway and reserves stands, but it is not certified real-world air traffic control and does not yet include full multi-aircraft taxiway pathfinding. Multiplayer, cloud saves, networked airline dispatch, full terminal traversal and production audio are later development phases; the airport remains hosted as a static GitHub Pages site.
 
 ## GitHub Pages
 
@@ -75,7 +75,7 @@ The HTML loads both stylesheets with relative paths and Vite generates the produ
 - Version 4 save migration that carries forward existing progress.
 
 ### Planned follow-up work
-1. Terminal cutaway/interior rooms with passenger routes, check-in, security, retail, departure seating and baggage reclaim.
+1. Extend the visible terminal cutaway into fully navigable interior rooms with passenger routes and interactive processing systems.
 2. Real ground-service task chains: baggage, refuelling, catering, pushback, cleaning, maintenance and boarding.
 3. Taxiway graph routing, collision avoidance, gate compatibility, runway occupancy sensors and advanced ATC controls.
 4. More building categories, freeform construction, larger airports and airport-region/world map.
