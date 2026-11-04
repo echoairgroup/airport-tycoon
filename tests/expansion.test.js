@@ -53,10 +53,11 @@ test('campaign destination milestones count distinct routes',()=>{
 test('an arriving aircraft completes the full landing, stand, service and departure cycle',()=>{
  const state=INITIAL_STATE();
  const route=addFlightSchedule(state,{destinationId:'AMS',airlineId:'northstar',aircraftId:'a320',interval:45}).route;
- state.expansion.schedules=[{...route,enabled:false}];
+ state.expansion.schedules=[route];
  state.gameMinutes=route.nextAt;
  const completed=[];
  tickAirportExpansion(state,.1,{onComplete:flight=>completed.push(flight)});
+ state.expansion.schedules[0].enabled=false;
  for(let i=0;i<1200&&completed.length===0;i++){
   state.gameMinutes+=.25;
   tickAirportExpansion(state,.25,{onComplete:flight=>completed.push(flight)});
