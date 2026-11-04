@@ -222,6 +222,17 @@ function changePhase(state, flight, phase, message) {
   if (message) notify(state, message.title, message.message, message.type || 'info');
 }
 
+export function clearFlightForApproach(state, flightId) {
+  const flight = ensureFlightList(state).find(item => item.id === flightId);
+  if (!flight || flight.phase !== 'holding') return { ok: false, reason: 'not-holding' };
+  if (isRunwayOccupied(state, flight.id)) return { ok: false, reason: 'runway-busy' };
+  const gate = availableGate(state);
+  if (!gate) return { ok: false, reason: 'no-gate' };
+  assignApproach(state, flight, gate);
+  syncPrimaryFlight(state);
+  return { ok: true, gateId: gate.id };
+}
+
 export function tickGame(state, realDelta) {
   const dt = Math.min(realDelta, .1) * state.speed;
   if (state.speed === 0) return;
@@ -250,7 +261,7 @@ export function tickGame(state, realDelta) {
     f.timer += gameDelta;
     if (f.phase === 'holding') {
       const gate = availableGate(state);
-      if (gate && !isRunwayOccupied(state, f.id)) {
+      if (gate && !isRunwayOccupied(state, f.id) && state.atcMode !== 'manual') {
         assignApproach(state, f, gate);
       } else {
         const queueIndex = flights.filter(item => item.phase === 'holding').findIndex(item => item.id === f.id);
