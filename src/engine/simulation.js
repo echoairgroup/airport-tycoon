@@ -1,4 +1,4 @@
-import { addMoney, applyHourlyCashFlow, settleFlight } from './economy.js';
+import { addMoney, applyHourlyCashFlow, settleFlight, settleMatureInvestments } from './economy.js';
 import { CONTRACT_DEFS } from '../data.js';
 
 const v = (x, y, z) => ({ x, y, z });
@@ -205,6 +205,7 @@ export function resolveIncident(state, hasQualifiedTeam = false) {
 function finishFlight(state, f) {
   const result = settleFlight(state, f.passengers, f.cargoTons || 0);
   state.cargoTonsHandled = (state.cargoTonsHandled || 0) + (f.cargoTons || 0);
+  state._dailyProfit = (state._dailyProfit || 0) + result.net;
   state.stats.peakPassengers = Math.max(state.stats.peakPassengers, state.passengers);
   state.reputation = Math.min(100, state.reputation + (state.satisfaction > 75 ? .45 : -.2));
   state.flightHistory.unshift({ id: f.id, airline: f.airline, model: f.model, passengers: f.passengers, cargoTons: f.cargoTons || 0, kind: f.kind || 'regional', destination: f.destination || 'Regional network', net: result.net, time: state.gameMinutes, status: 'Departed' });
@@ -228,7 +229,10 @@ export function tickGame(state, realDelta) {
   state.gameMinutes += gameDelta;
   updateIncidents(state, gameDelta);
 
-  applyHourlyCashFlow(state, gameDelta);
+  const cashFlow = applyHourlyCashFlow(state, gameDelta);
+  state._dailyProfit = (state._dailyProfit || 0) + cashFlow.net * gameDelta / 60;
+  const maturedInvestmentPayout = settleMatureInvestments(state);
+  if (maturedInvestmentPayout > 0) notify(state, 'Investment matured', `Your airport investment paid out €${Math.round(maturedInvestmentPayout).toLocaleString('en-GB')}.`, 'success');
 
   state.passengers = Math.max(0, state.passengers - gameDelta * .018);
   const staffTotal = Object.values(state.staff).reduce((a, b) => a + b, 0);
@@ -315,6 +319,29 @@ export function tickGame(state, realDelta) {
     addMoney(state, 2500 + state.level * 500);
     notify(state, 'Airport level increased!', `Your airport reached level ${state.level}. New facilities may be unlocked.`, 'success');
   }
+  const previousDay = Number.isInteger(state._taxDay) ? state._taxDay : Math.floor((state.gameMinutes - gameDelta) / 1440);
+  const currentDay = Math.floor(state.gameMinutes / 1440);
+  if (currentDay > previousDay) {
+    const taxableProfit = Math.max(0, Number(state._dailyProfit) || 0);
+    const tax = Math.round(taxableProfit * 0.12);
+    if (tax > 0) {
+      addMoney(state, -tax);
+      state.taxesPaid = (state.taxesPaid || 0) + tax;
+      notify(state, 'Daily airport tax paid', `€${tax.toLocaleString('en-GB')} was paid on your positive daily operating result.`, 'info');
+    }
+    state._dailyProfit = 0;
+    state._taxDay = currentDay;
+    if (state.money < 0) state.insolvencyDays = (state.insolvencyDays || 0) + 1;
+    else state.insolvencyDays = 0;
+    if ((state.insolvencyDays || 0) >= 3 && !state.bankrupt) {
+      state.bankrupt = true;
+      state.speed = 0;
+      notify(state, 'Airport insolvent', 'The airport has remained in debt for three in-game days. The simulation is paused; review financing and operating costs.', 'warning');
+    }
+  } else {
+    state._taxDay = previousDay;
+  }
+
   if (state.money < 0) state.satisfaction = Math.max(35, state.satisfaction - gameDelta * .025);
 }
 
