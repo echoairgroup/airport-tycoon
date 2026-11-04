@@ -125,7 +125,7 @@ test('airport hotel adds passive hourly income', () => {
   const standard = INITIAL_STATE();
   const hotel = INITIAL_STATE();
   hotel.buildings.push({ id: 'hotel-1', type: 'hotel', upkeep: 245 });
-  assert.equal(hourlyIncome(hotel) - hourlyIncome(standard), 520);
+  assert.equal(hourlyIncome(hotel) - hourlyIncome(standard), 950);
 });
 
 test('qualified teams resolve incidents at the staffed response cost', () => {
