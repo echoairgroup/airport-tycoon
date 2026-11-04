@@ -5,12 +5,14 @@ A browser-based 3D airport management game built with Three.js and Vite. Build a
 ## Living Airport Update 1.2
 
 ### Airport world
-- Much larger continuous 3D region with an expanded construction campus (roughly 184 × 78 world units), a marked airport service road, perimeter fencing and room for future development.
+- Much larger continuous 3D region with an expanded construction campus (roughly 304 × 148 world units), a marked airport service road, perimeter fencing and room for future development.
 - Regional airport with terminal, apron, runway 09/27, taxiways, stand markings, approach lighting and textured asphalt.
 - Surrounding road network, larger residential district, local shops, logistics warehouses, cargo truck courts, retention pond, tree belts and distant wind turbines.
 - Procedural passenger aircraft, passenger jets and cargo freighters.
 - Concurrent independent aircraft with holding patterns, runway sequencing, gate reservations, taxi-in, turnaround, taxi-out and take-off.
 - Manual airline flight planning with 12 international destinations, seven operators and six aircraft types.
+- An open-top 3D terminal concourse cutaway with check-in, security lanes, boarding lounge seats, duty-free retail and baggage reclaim props.
+- Automatic or manual ATC mode, live holding queue and individual landing-clearance controls.
 - A queued timetable that dispatches aircraft when a runway slot and free stand are available.
 - Two visible parked aircraft, animated passengers, baggage tug and carts.
 - Surrounding town with houses, shops and continuously moving road traffic on a 14-car regional road network.
@@ -66,6 +68,7 @@ The HTML loads both stylesheets with relative paths and Vite generates the produ
 
 ### Implemented on the 1.2 release branch
 - Multiple active aircraft with independent movement, holding states and stand reservations.
+- ATC controller mode selection with manual landing clearances for waiting aircraft.
 - Single-runway ATC sequencing so only one aircraft at a time is cleared for runway phases.
 - Player-created flight plans with airline, aircraft and international destination selection.
 - Loan principal, loan interest, repayments, timed investments, daily profit tax and insolvency tracking.
