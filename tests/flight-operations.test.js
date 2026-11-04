@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { INITIAL_STATE } from '../src/data.js';
 import { createFlightPlan } from '../src/engine/flight-planning.js';
-import { tickGame } from '../src/engine/simulation.js';
+import { tickGame, clearFlightForApproach } from '../src/engine/simulation.js';
 import { createInvestment, repayLoan, settleMatureInvestments, takeLoan } from '../src/engine/economy.js';
 
 test('player can schedule an international passenger flight', () => {
@@ -57,4 +57,17 @@ test('investment pays out its advertised return after seven in-game days', () =>
   assert.equal(settleMatureInvestments(state), 5400);
   assert.equal(state.money, before + 400);
   assert.equal(state.investments.length, 0);
+});
+
+test('manual ATC waits for controller landing clearance', () => {
+  const state = INITIAL_STATE();
+  state.atcMode = 'manual';
+  state.nextFlightAt = state.gameMinutes + 0.1;
+  for (let i = 0; i < 3; i++) tickGame(state, 0.1);
+  const flight = state.activeFlights[0];
+  assert.equal(flight.phase, 'holding');
+  const clearance = clearFlightForApproach(state, flight.id);
+  assert.equal(clearance.ok, true);
+  assert.equal(flight.phase, 'approach');
+  assert.equal(flight.gateId, 'initial-gate');
 });
