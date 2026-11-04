@@ -178,7 +178,7 @@ export class AirportWorld {
     this.controls.minZoom = .22;
     this.controls.maxZoom = 2.6;
     this.controls.minDistance = 48;
-    this.controls.maxDistance = 300;
+    this.controls.maxDistance = 450;
     this.controls.screenSpacePanning = false;
 
     this.raycaster = new THREE.Raycaster();
@@ -208,6 +208,7 @@ export class AirportWorld {
     this.createTerrain();
     this.createAirfield();
     this.createTerminal();
+    this.createTerminalInterior();
     this.createEnvironment();
     this.createDistrict();
     this.createRegionalLandscape();
@@ -246,7 +247,7 @@ export class AirportWorld {
 
   createTerrain() {
     // A much wider continuous landscape leaves room for the airport to grow.
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(420, 360), shared.grass);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(620, 520), shared.grass);
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(0, 0, 14);
     ground.receiveShadow = true;
@@ -255,9 +256,9 @@ export class AirportWorld {
 
     // Broad grass panels and subtle mowing lines make the airfield read as a
     // real regional site rather than a small floating diorama.
-    for (let i = 0; i < 34; i++) {
-      const x = -132 + i * 8;
-      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 188), i % 2 ? shared.grassDark : shared.grassLight);
+    for (let i = 0; i < 52; i++) {
+      const x = -250 + i * 9.8;
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 300), i % 2 ? shared.grassDark : shared.grassLight);
       stripe.rotation.x = -Math.PI / 2;
       stripe.position.set(x, .012, 14);
       stripe.receiveShadow = true;
@@ -265,20 +266,20 @@ export class AirportWorld {
     }
 
     // Expanded construction and service campus behind the passenger terminal.
-    const yard = new THREE.Mesh(new THREE.PlaneGeometry(184, 78), material('#86ca65'));
+    const yard = new THREE.Mesh(new THREE.PlaneGeometry(304, 148), material('#86ca65'));
     yard.rotation.x = -Math.PI / 2;
-    yard.position.set(0, .016, 72);
+    yard.position.set(0, .016, 108);
     yard.receiveShadow = true;
     this.scene.add(yard);
     const yardLine = material('#a5df80');
-    for (let x = -90; x <= 90; x += 10) {
-      const tile = new THREE.Mesh(new THREE.PlaneGeometry(.12, 76), yardLine);
+    for (let x = -150; x <= 150; x += 10) {
+      const tile = new THREE.Mesh(new THREE.PlaneGeometry(.12, 146), yardLine);
       tile.rotation.x = -Math.PI / 2;
-      tile.position.set(x, .045, 72);
+      tile.position.set(x, .045, 108);
       this.scene.add(tile);
     }
-    for (let z = 35; z <= 109; z += 8) {
-      const tile = new THREE.Mesh(new THREE.PlaneGeometry(182, .12), yardLine);
+    for (let z = 35; z <= 181; z += 8) {
+      const tile = new THREE.Mesh(new THREE.PlaneGeometry(302, .12), yardLine);
       tile.rotation.x = -Math.PI / 2;
       tile.position.set(0, .045, z);
       this.scene.add(tile);
@@ -287,27 +288,27 @@ export class AirportWorld {
     // Wide, marked airport service road at the far edge of the build zone.
     const serviceRoad = material('#39444e', .94);
     const roadMark = material('#f5e8b8', .8);
-    box(this.scene, 194, .2, 7.8, serviceRoad, 0, .025, 114, false);
-    box(this.scene, 194, .12, 1.5, material('#b5beb8'), 0, .09, 119, false);
-    for (let x = -90; x <= 90; x += 12) {
-      box(this.scene, 4.5, .025, .14, roadMark, x, .14, 114, false);
+    box(this.scene, 320, .2, 7.8, serviceRoad, 0, .025, 186, false);
+    box(this.scene, 320, .12, 1.5, material('#b5beb8'), 0, .09, 191, false);
+    for (let x = -150; x <= 150; x += 12) {
+      box(this.scene, 4.5, .025, .14, roadMark, x, .14, 186, false);
     }
 
     // Four-sided airport perimeter fence, with enough space for the enlarged
     // service campus and the future apron-side expansion.
     const fence = material('#dce7e1');
-    for (let x = -158; x <= 158; x += 5) {
+    for (let x = -218; x <= 218; x += 5) {
       cylinder(this.scene, .055, .055, 1.25, fence, x, .625, -55, 6);
-      cylinder(this.scene, .055, .055, 1.25, fence, x, .625, 121, 6);
+      cylinder(this.scene, .055, .055, 1.25, fence, x, .625, 194, 6);
     }
-    for (let z = -55; z <= 121; z += 5) {
-      cylinder(this.scene, .055, .055, 1.25, fence, -158, .625, z, 6);
-      cylinder(this.scene, .055, .055, 1.25, fence, 158, .625, z, 6);
+    for (let z = -55; z <= 194; z += 5) {
+      cylinder(this.scene, .055, .055, 1.25, fence, -218, .625, z, 6);
+      cylinder(this.scene, .055, .055, 1.25, fence, 218, .625, z, 6);
     }
-    box(this.scene, 319, .12, .12, fence, 0, .68, -55, false);
-    box(this.scene, 319, .12, .12, fence, 0, .68, 121, false);
-    box(this.scene, .12, .12, 176, fence, -158, .68, 33, false);
-    box(this.scene, .12, .12, 176, fence, 158, .68, 33, false);
+    box(this.scene, 439, .12, .12, fence, 0, .68, -55, false);
+    box(this.scene, 439, .12, .12, fence, 0, .68, 194, false);
+    box(this.scene, .12, .12, 249, fence, -218, .68, 69.5, false);
+    box(this.scene, .12, .12, 249, fence, 218, .68, 69.5, false);
   }
 
   createAirfield() {
@@ -414,6 +415,98 @@ export class AirportWorld {
     }
   }
 
+
+  createTerminalInterior() {
+    // Open-top terminal cutaway: visible rooms and passenger processing
+    // objects make the interior readable from the management camera.
+    const hall = new THREE.Group();
+    hall.position.set(45, 0, 20);
+    this.scene.add(hall);
+    const floor = material('#b7c6cc', .92);
+    const wall = material('#e1e9eb');
+    const blueTrim = material('#256e98');
+    const paleGlass = new THREE.MeshStandardMaterial({ color: '#9ed9e8', roughness: .22, metalness: .08, transparent: true, opacity: .52 });
+    box(hall, 32, .28, 20, floor, 0, .14, 0, false);
+    // Low perimeter walls intentionally leave the roof open for a cutaway view.
+    box(hall, .3, 1.55, 20, wall, -16, .9, 0);
+    box(hall, .3, 1.55, 20, wall, 16, .9, 0);
+    box(hall, 32, 1.55, .3, wall, 0, .9, 10);
+    box(hall, 32, .55, .3, paleGlass, 0, 1.15, -10, false);
+    box(hall, 31.8, .16, .26, blueTrim, 0, 1.72, -10, false);
+    const sign = makeTextLabel('TERMINAL CONCOURSE', '#ffffff', [11, 1.25, 1]);
+    sign.position.set(0, 3.1, -9.8);
+    hall.add(sign);
+
+    // Check-in island with desks, monitors, queue dividers and screens.
+    for (let i = 0; i < 6; i++) {
+      const x = -12.5 + i * 5;
+      box(hall, 2.5, 1.05, 1.05, blueTrim, x, .82, -6.7);
+      box(hall, .95, .6, .10, shared.dark, x, 1.62, -6.85, false);
+      box(hall, .72, .44, .08, shared.glass, x, 1.62, -6.92, false);
+      cylinder(hall, .06, .06, 1.0, shared.silver, x - 1.45, .68, -5.8, 8);
+      cylinder(hall, .06, .06, 1.0, shared.silver, x + 1.45, .68, -5.8, 8);
+    }
+    const checkinLabel = makeTextLabel('CHECK-IN  ·  BAG DROP', '#ffffff', [9, .9, 1]);
+    checkinLabel.position.set(0, 2.2, -5.6);
+    hall.add(checkinLabel);
+
+    // Three security lanes with metal detector portals and conveyor belts.
+    for (let lane = 0; lane < 3; lane++) {
+      const x = -9 + lane * 9;
+      box(hall, 4.7, .18, 1.25, material('#596d7a'), x, .38, -1.2, false);
+      box(hall, .22, 2.2, 1.1, blueTrim, x - 1.9, 1.4, -2.2);
+      box(hall, .22, 2.2, 1.1, blueTrim, x + 1.9, 1.4, -2.2);
+      box(hall, 4.0, .18, .18, shared.silver, x, 2.45, -2.2);
+      box(hall, 1.9, .75, 1.0, shared.dark, x, .82, -1.2);
+    }
+    const securityLabel = makeTextLabel('SECURITY SCREENING', '#ffffff', [8, .85, 1]);
+    securityLabel.position.set(0, 2.8, .2);
+    hall.add(securityLabel);
+
+    // Departure lounge seating, charging desks and gate podium.
+    for (let row = 0; row < 2; row++) {
+      for (let seat = 0; seat < 7; seat++) {
+        const x = -13 + seat * 4.1;
+        const z = 3.8 + row * 3.0;
+        box(hall, 1.55, .28, 1.0, blueTrim, x, .62, z);
+        box(hall, 1.5, .95, .22, shared.blueDark, x, 1.12, z + .38);
+        box(hall, .16, .72, .14, shared.silver, x - .66, .45, z);
+        box(hall, .16, .72, .14, shared.silver, x + .66, .45, z);
+      }
+    }
+    box(hall, 5.4, 1.05, 1.45, material('#dfe8eb'), 11, .82, 6.6);
+    box(hall, 5.0, .16, 1.5, shared.orange, 11, 1.4, 6.6);
+    const gateLabel = makeTextLabel('BOARDING GATES', '#ffffff', [6, .85, 1]);
+    gateLabel.position.set(11, 2.35, 6.5);
+    hall.add(gateLabel);
+
+    // Retail concession and baggage reclaim carousel.
+    box(hall, 6.0, 1.0, 2.1, material('#e2eee8'), -11.5, .8, 6.5);
+    box(hall, 6.2, .24, 2.25, shared.green, -11.5, 1.42, 6.5);
+    const shopLabel = makeTextLabel('DUTY FREE', '#ffffff', [4, .7, 1]);
+    shopLabel.position.set(-11.5, 2.2, 5.5);
+    hall.add(shopLabel);
+    const carousel = new THREE.Mesh(new THREE.TorusGeometry(2.3, .27, 8, 32), material('#536773', .7));
+    carousel.rotation.x = Math.PI / 2;
+    carousel.position.set(0, .48, 8.2);
+    hall.add(carousel);
+    const baggage = makeTextLabel('BAGGAGE RECLAIM', '#ffffff', [6, .75, 1]);
+    baggage.position.set(0, 1.7, 8.2);
+    hall.add(baggage);
+
+    // An access corridor visually links the cutaway concourse to the main terminal.
+    box(this.scene, 17, .16, 4.0, floor, 22.5, .2, 20, false);
+    box(this.scene, 17, .35, .18, paleGlass, 22.5, .9, 18, false);
+    box(this.scene, 17, .35, .18, paleGlass, 22.5, .9, 22, false);
+    const clothes = ['#e85d5d', '#3c86d4', '#f0a43b', '#7b68c9', '#37a984', '#e8edf2'];
+    for (let i = 0; i < 6; i++) {
+      const person = makePassenger(clothes[i], i + 3);
+      person.position.set(-12 + i * 4.7, .31, 1.5 + (i % 2) * 3.0);
+      person.rotation.y = (i % 2) * Math.PI;
+      hall.add(person);
+    }
+  }
+
   createEnvironment() {
     // Buildable service yard boundary and simple airport perimeter details.
     for (let x = -56; x <= 56; x += 14) {
@@ -444,22 +537,22 @@ export class AirportWorld {
     const lane = material('#f4e8bb', .8);
 
     // Outer ring road and connected local streets now surround the full site.
-    box(this.scene, 302, .18, 8.2, road, 0, .02, -95, false);
-    box(this.scene, 302, .18, 8.2, road, 0, .02, 146, false);
-    box(this.scene, 8.2, .18, 241, road, -151, .02, 25.5, false);
-    box(this.scene, 8.2, .18, 241, road, 151, .02, 25.5, false);
-    box(this.scene, 302, .12, 2.0, sidewalk, 0, .08, -101, false);
-    box(this.scene, 302, .12, 2.0, sidewalk, 0, .08, 152, false);
-    box(this.scene, 2.0, .12, 241, sidewalk, -158, .08, 25.5, false);
-    box(this.scene, 2.0, .12, 241, sidewalk, 158, .08, 25.5, false);
+    box(this.scene, 420, .18, 8.2, road, 0, .02, -95, false);
+    box(this.scene, 420, .18, 8.2, road, 0, .02, 220, false);
+    box(this.scene, 8.2, .18, 315, road, -211, .02, 62.5, false);
+    box(this.scene, 8.2, .18, 315, road, 211, .02, 62.5, false);
+    box(this.scene, 420, .12, 2.0, sidewalk, 0, .08, -101, false);
+    box(this.scene, 420, .12, 2.0, sidewalk, 0, .08, 226, false);
+    box(this.scene, 2.0, .12, 315, sidewalk, -218, .08, 62.5, false);
+    box(this.scene, 2.0, .12, 315, sidewalk, 218, .08, 62.5, false);
 
-    for (let x = -140; x <= 140; x += 12) {
+    for (let x = -200; x <= 200; x += 12) {
       box(this.scene, 4.2, .025, .12, lane, x, .125, -95, false);
-      box(this.scene, 4.2, .025, .12, lane, x, .125, 146, false);
+      box(this.scene, 4.2, .025, .12, lane, x, .125, 220, false);
     }
-    for (let z = -83; z <= 134; z += 12) {
-      box(this.scene, .12, .025, 4.2, lane, -151, .125, z, false);
-      box(this.scene, .12, .025, 4.2, lane, 151, .125, z, false);
+    for (let z = -83; z <= 208; z += 12) {
+      box(this.scene, .12, .025, 4.2, lane, -211, .125, z, false);
+      box(this.scene, .12, .025, 4.2, lane, 211, .125, z, false);
     }
 
     // Two rows of homes and neighbourhood shops beyond the airport fence.
@@ -467,22 +560,22 @@ export class AirportWorld {
       const x = -130 + i * 37.1;
       if (i === 1 || i === 6) this.addDistrictShop(x, -121, i);
       else this.addDistrictHouse(x, -121, i);
-      this.addDistrictHouse(x, 171, i + 8);
+      this.addDistrictHouse(x, 244, i + 8);
     }
     for (const x of [-132, -88, -44, 44, 88, 132]) {
       this.addTree(x, -109, .82);
-      this.addTree(x, 158, .86);
+      this.addTree(x, 231, .86);
     }
 
     this.trafficPath = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-148, .12, -95), new THREE.Vector3(-74, .12, -95),
+      new THREE.Vector3(-208, .12, -95), new THREE.Vector3(-74, .12, -95),
       new THREE.Vector3(0, .12, -95), new THREE.Vector3(74, .12, -95),
-      new THREE.Vector3(148, .12, -95), new THREE.Vector3(151, .12, -62),
-      new THREE.Vector3(151, .12, 28), new THREE.Vector3(151, .12, 111),
-      new THREE.Vector3(148, .12, 146), new THREE.Vector3(74, .12, 146),
-      new THREE.Vector3(0, .12, 146), new THREE.Vector3(-74, .12, 146),
-      new THREE.Vector3(-148, .12, 146), new THREE.Vector3(-151, .12, 111),
-      new THREE.Vector3(-151, .12, 28), new THREE.Vector3(-151, .12, -62)
+      new THREE.Vector3(208, .12, -95), new THREE.Vector3(211, .12, -62),
+      new THREE.Vector3(211, .12, 55), new THREE.Vector3(211, .12, 160),
+      new THREE.Vector3(208, .12, 220), new THREE.Vector3(74, .12, 220),
+      new THREE.Vector3(0, .12, 220), new THREE.Vector3(-74, .12, 220),
+      new THREE.Vector3(-208, .12, 220), new THREE.Vector3(-211, .12, 160),
+      new THREE.Vector3(-211, .12, 55), new THREE.Vector3(-211, .12, -62)
     ], true, 'centripetal');
 
     const carPaints = ['#e85d5d', '#e8edf0', '#307fbd', '#e4a04e', '#41586d', '#5b9b70', '#c9cbd0'];
