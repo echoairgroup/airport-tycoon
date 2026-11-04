@@ -219,3 +219,33 @@
 .atc-command:disabled { cursor:not-allowed; opacity:.4; }
 .atc-no-command { grid-column:1/-1; justify-self:end; color:#91a9b7; font-size:7px; letter-spacing:.08em; }
 @media(max-width:480px) { .schedule-grid { grid-template-columns:1fr; } }
+
+
+/* Financial management: lending, tax policy and capital projects */
+.tax-buttons { display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 12px; }
+.tax-buttons .active { border-color:rgba(158,231,123,.7); color:#b1f18c; background:rgba(110,179,75,.16); }
+.loan-list,.loan-offers,.investment-list { display:grid; gap:8px; margin:10px 0 14px; }
+.loan-card,.loan-offer,.investment-card {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px 12px;
+  padding:12px; border-radius:12px; background:rgba(255,255,255,.05);
+  border:1px solid rgba(225,244,255,.1);
+}
+.loan-card > div,.loan-offer > div { min-width:0; }
+.loan-card b,.loan-card small,.loan-card span,.loan-offer b,.loan-offer small { display:block; }
+.loan-card b,.loan-offer b,.investment-card b { color:#f1f7fb; font-size:9px; }
+.loan-card small,.loan-offer small,.investment-card small { display:block; margin-top:4px; color:#9eb7c4; font-size:7.5px; }
+.loan-card > strong { color:#a8e88b; font-size:14px; text-align:right; }
+.loan-card > span { grid-column:1/-1; color:#9eb7c4; font-size:7.5px; }
+.loan-card > button { grid-column:1/-1; justify-self:end; }
+.loan-offer { grid-template-columns:minmax(0,1fr) auto; }
+.investment-card { grid-template-columns:32px minmax(0,1fr) auto; }
+.investment-icon { display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:rgba(92,161,189,.14); font-size:16px; }
+.investment-card > div:nth-child(2) { min-width:0; }
+.investment-card > div:nth-child(2) span { display:block; margin-top:5px; color:#9fe2a3; font-size:7px; }
+.investment-card > button { max-width:112px; white-space:normal; font-size:6.5px; }
+@media(max-width:480px) {
+  .loan-offer { grid-template-columns:1fr; }
+  .loan-offer button { justify-self:start; }
+  .investment-card { grid-template-columns:28px minmax(0,1fr); }
+  .investment-card > button { grid-column:2; justify-self:start; }
+}

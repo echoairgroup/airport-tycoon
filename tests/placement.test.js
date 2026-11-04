@@ -274,3 +274,53 @@ test('cargo flights use loading and unloading stages rather than passenger board
   const flight = { id: 'AT102', passengers: 0, cargoTons: 26 };
   assert.deepEqual(getGroundServicePlan(flight).map(stage => stage.id), ['cargo-unload','refueling','cargo-loading','maintenance-check','pushback']);
 });
+
+import { takeLoan, repayLoan, setTaxRate, investInProject, hourlyExpenseBreakdown, hourlyIncomeBreakdown, applyHourlyCashFlow } from '../src/engine/economy.js';
+
+test('loan proceeds and scheduled principal and interest are reflected in the bank ledger', () => {
+  const state = INITIAL_STATE();
+  const result = takeLoan(state, 'regional');
+  assert.equal(result.ok, true);
+  assert.equal(state.money, 125000);
+  assert.equal(state.loans.length, 1);
+  const payment = hourlyExpenseBreakdown(state);
+  assert.ok(payment.loanPrincipal > 0);
+  assert.ok(payment.loanInterest > 0);
+  const balance = state.loans[0].balance;
+  applyHourlyCashFlow(state, 60);
+  assert.ok(state.loans[0].balance < balance);
+  assert.ok(state.loanInterestPaid > 0);
+});
+
+test('early loan repayment reduces principal without allowing an overdraft', () => {
+  const state = INITIAL_STATE();
+  const loan = takeLoan(state, 'regional').loan;
+  const result = repayLoan(state, loan.id, 10000);
+  assert.equal(result.ok, true);
+  assert.equal(result.remaining, 40000);
+  state.money = 1;
+  assert.equal(repayLoan(state, loan.id, 1000).reason, 'funds');
+});
+
+test('tax policy is clamped and tax is charged only on positive operating profit', () => {
+  const state = INITIAL_STATE();
+  assert.equal(setTaxRate(state, .12).ok, true);
+  assert.equal(state.taxRate, .12);
+  const expenses = hourlyExpenseBreakdown(state);
+  assert.ok(expenses.taxes >= 0);
+  assert.equal(setTaxRate(state, 3).taxRate, .2);
+  assert.equal(setTaxRate(state, -1).taxRate, .02);
+});
+
+test('investment projects change recurring income and operating savings', () => {
+  const state = INITIAL_STATE();
+  state.level = 3;
+  const before = hourlyIncomeBreakdown(state).investmentReturns;
+  const incomeProject = investInProject(state, 'terminal-retail');
+  assert.equal(incomeProject.ok, true);
+  assert.equal(hourlyIncomeBreakdown(state).investmentReturns, before + 350);
+  const solar = investInProject(state, 'solar-generation');
+  assert.equal(solar.ok, true);
+  assert.ok(hourlyExpenseBreakdown(state).baseOperations < 280);
+  assert.equal(investInProject(state, 'solar-generation').reason, 'already-owned');
+});

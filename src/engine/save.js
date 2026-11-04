@@ -1,10 +1,10 @@
 import { getPlacementStatus } from './placement.js';
 
-const SAVE_KEY = 'airport-tycoon-save-v4';
-const LEGACY_SAVE_KEYS = ['airport-tycoon-save-v3', 'airport-tycoon-save-v2', 'airport-tycoon-save-v1'];
+const SAVE_KEY = 'airport-tycoon-save-v5';
+const LEGACY_SAVE_KEYS = ['airport-tycoon-save-v4', 'airport-tycoon-save-v3', 'airport-tycoon-save-v2', 'airport-tycoon-save-v1'];
 
 export function saveGame(state) {
-  const snapshot = { ...state, version: 4, speed: 1, lastSavedAt: Date.now(), lastRealTime: Date.now() };
+  const snapshot = { ...state, version: 5, speed: 1, lastSavedAt: Date.now(), lastRealTime: Date.now() };
   localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
   return snapshot.lastSavedAt;
 }
@@ -97,15 +97,29 @@ function migrateV4(parsed) {
   };
 }
 
+function migrateV5(parsed) {
+  const taxRate = Number.isFinite(Number(parsed.taxRate)) ? Math.min(.2, Math.max(.02, Number(parsed.taxRate))) : .08;
+  return {
+    ...parsed,
+    version: 5,
+    loans: Array.isArray(parsed.loans) ? parsed.loans.filter(loan => loan && Number(loan.balance) > 0) : [],
+    investments: Array.isArray(parsed.investments) ? parsed.investments : [],
+    taxRate,
+    taxPaid: Number(parsed.taxPaid) || 0,
+    loanInterestPaid: Number(parsed.loanInterestPaid) || 0
+  };
+}
+
 export function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY) || LEGACY_SAVE_KEYS.map(key => localStorage.getItem(key)).find(Boolean);
     if (!raw) return null;
     let parsed = JSON.parse(raw);
-    if (!parsed || ![1, 2, 3, 4].includes(parsed.version) || typeof parsed.money !== 'number' || !Array.isArray(parsed.buildings)) return null;
+    if (!parsed || ![1, 2, 3, 4, 5].includes(parsed.version) || typeof parsed.money !== 'number' || !Array.isArray(parsed.buildings)) return null;
     if (parsed.version === 1) parsed = migrateV1(parsed);
     parsed = migrateV3(parsed);
     parsed = migrateV4(parsed);
+    parsed = migrateV5(parsed);
     const elapsedHours = Math.max(0, Math.min(8, (Date.now() - (parsed.lastRealTime || Date.now())) / 3600000));
     if (elapsedHours > .01) {
       const staffCost = Object.values(parsed.staff || {}).reduce((a, b) => a + b, 0) * 32;
@@ -114,7 +128,7 @@ export function loadGame() {
       parsed.offlineEarnings = Math.floor(hourlyNet * elapsedHours * .35);
       parsed.money += parsed.offlineEarnings;
     }
-    parsed.version = 4;
+    parsed.version = 5;
     parsed.lastRealTime = Date.now();
     return parsed;
   } catch {

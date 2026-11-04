@@ -86,3 +86,7 @@ The 1.2 operations foundation also includes an accessible ATC control desk. Play
 ### Ground handling turnaround
 
 Passenger flights now pass through baggage unloading, refuelling, catering, technical inspection, passenger boarding/security and pushback before taxiing out. Cargo aircraft use separate unloading and freight-loading tasks. Staffing, research and the presence of specialist facilities change service times. The stages are simulated as operational tasks; dedicated animated baggage carts, fuel trucks, catering trucks, staff task agents and service billing remain future visual/economic integrations.
+
+### Loans, corporate tax and capital investments
+
+The 1.2 finance layer supports three optional loan sizes with transparent game-hour interest and scheduled principal repayment, early full repayment, selectable corporate tax rates and one-time capital projects. Taxes are calculated on positive operating profit after the recurring operating and financing cost base. Purchased investments flow into the same recurring income/savings/maintenance totals used by the bank balance and finance panel. Existing save games receive empty loan/investment ledgers and the default 8% tax policy during save format 5 migration.

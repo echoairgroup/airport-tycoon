@@ -1,7 +1,7 @@
 import { AirportWorld } from './world/World.js';
 import { INITIAL_STATE, BUILDINGS, RESEARCH, MISSION_DEFS, CONTRACT_DEFS } from './data.js';
 import { saveGame, loadGame, hasSave, deleteSave } from './engine/save.js';
-import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney } from './engine/economy.js';
+import { hourlyExpenses, hourlyIncome, hourlyIncomeBreakdown, hourlyExpenseBreakdown, addMoney, LOAN_OFFERS, INVESTMENT_DEFS, takeLoan, repayLoan, setTaxRate, investInProject } from './engine/economy.js';
 import { tickGame, flightPhaseLabel, giveXP, resolveIncident, scheduleArrival, holdArrival, clearArrival, setRunwayClosed } from './engine/simulation.js';
 import { getPlacementStatus as validatePlacement } from './engine/placement.js';
 
@@ -301,12 +301,17 @@ function renderFinances() {
     ['Passenger parking', incomeParts.parking],
     ['Airport hotel', incomeParts.hotels],
     ['Cargo operations', incomeParts.cargo],
+    ['Investment returns', incomeParts.investmentReturns || 0],
   ];
   const expenseLabels = [
     ['Employee wages', expenseParts.wages],
     ['Base airport operations', expenseParts.baseOperations],
     ['Building maintenance', expenseParts.buildingMaintenance],
     ['Runway wear & maintenance', expenseParts.runwayMaintenance],
+    ['Investment upkeep', expenseParts.investmentUpkeep || 0],
+    ['Loan principal repayments', expenseParts.loanPrincipal || 0],
+    ['Loan interest', expenseParts.loanInterest || 0],
+    ['Corporate tax', expenseParts.taxes || 0],
   ];
   return `${panelHeader('AIRPORT ECONOMY','Finances','See every recurring payment and watch the money actually enter or leave your airport account.')}
   <div class="finance-balance"><div><small>CURRENT BALANCE</small><strong>${fmt(state.money)}</strong><span class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)} net per game hour · automatically paid</span></div><div class="balance-icon">€</div></div>
@@ -316,6 +321,14 @@ function renderFinances() {
   <div class="content-card"><div class="card-heading"><h3>Operating expenses</h3><span class="muted-label">PER GAME HOUR</span></div>${expenseLabels.map(([label,value])=>`<div class="facility-row"><span>${label}</span><b class="bad-text">−${fmt(value)}</b></div>`).join('')}<div class="facility-row"><span><b>Net recurring result</b></span><b class="${net>=0?'good-text':'bad-text'}">${fmtSigned(net)}</b></div></div>
   <div class="content-card chart-card"><div class="card-heading"><h3>Recent flight performance</h3><span class="muted-label">PER COMPLETED FLIGHT</span></div><div class="chart-legend"><span><i class="legend-income"></i> Revenue</span><span><i class="legend-expense"></i> Expenses</span></div><div class="bar-chart">${history.map(h=>`<div class="bar-group"><div class="bar-pair"><i class="bar-income" style="height:${Math.max(2,h.income/max*100)}%" title="Revenue ${fmt(h.income)}"></i><i class="bar-expense" style="height:${Math.max(2,h.expenses/max*100)}%" title="Expenses ${fmt(h.expenses)}"></i></div><small>${h.label}</small></div>`).join('')||'<div class="empty-state">Complete a flight to start building your financial history.</div>'}</div></div>
   <div class="maintenance-card"><div><small>RUNWAY SURFACE CONDITION</small><strong>${Math.round(state.runwayCondition ?? 100)}%</strong><p>Landings wear the asphalt. Repair the surface to keep maintenance costs under control.</p><div class="satisfaction-bar"><i style="width:${state.runwayCondition ?? 100}%"></i></div></div><button class="primary-small" data-action="repair-runway" ${(state.runwayCondition ?? 100) >= 99 ? 'disabled' : ''}>REPAIR · ${fmt(Math.round((100-(state.runwayCondition ?? 100))*140+250))}</button></div>
+  <div class="section-title"><h3>Tax policy</h3><span class="muted-label">CORPORATE TAX</span></div>
+  <div class="content-card"><div class="facility-row"><span>Current tax rate</span><b>${Math.round((state.taxRate || .08)*100)}%</b></div><div class="tax-buttons">${[.05,.08,.12,.16].map(rate=>`<button class="secondary-small ${Math.abs((state.taxRate || .08)-rate)<.001?'active':''}" data-tax-rate="${rate}">${Math.round(rate*100)}%</button>`).join('')}</div><small>Tax is charged on positive hourly operating profit after wages, maintenance, investments and loan servicing.</small><div class="facility-row"><span>Lifetime tax paid</span><b>${fmt(state.taxPaid || 0)}</b></div></div>
+  <div class="section-title"><h3>Bank loans</h3><span class="muted-label">${(state.loans || []).length} ACTIVE · LIMIT 2</span></div>
+  <div class="loan-list">${(state.loans || []).map(loan=>`<div class="loan-card"><div><b>${loan.name}</b><small>Original ${fmt(loan.originalAmount)} · ${loan.hoursRemaining.toFixed(0)} game hours remaining</small></div><strong>${fmt(loan.balance)}</strong><span>${(loan.interestPerGameHour*100).toFixed(2)}% interest per game hour</span><button class="secondary-small" data-repay-loan="${loan.id}" data-amount="${Math.ceil(loan.balance)}">REPAY IN FULL · ${fmt(loan.balance)}</button></div>`).join('') || '<div class="empty-state">No active loans. Borrowing is optional and all repayments are visible in hourly costs.</div>'}
+  <div class="loan-offers">${LOAN_OFFERS.map(offer=>{const locked=state.level<offer.level,limit=(state.loans||[]).filter(loan=>loan.balance>.01).length>=2;return `<div class="loan-offer"><div><b>${offer.name}</b><small>${fmt(offer.principal)} · ${offer.termHours} game hours · level ${offer.level}</small></div><button class="primary-small" data-take-loan="${offer.id}" ${locked||limit?'disabled':''}>${locked?'LOCKED':limit?'LOAN LIMIT':'BORROW'}</button></div>`;}).join('')}</div>
+  <div class="facility-row"><span>Lifetime loan interest paid</span><b>${fmt(state.loanInterestPaid || 0)}</b></div></div>
+  <div class="section-title"><h3>Capital investments</h3><span class="muted-label">${(state.investments || []).length} PROJECTS ACTIVE</span></div>
+  <div class="investment-list">${INVESTMENT_DEFS.map(project=>{const owned=(state.investments||[]).some(item=>item.id===project.id),locked=state.level<project.level,facility=project.requiredBuilding&&!state.buildings.some(b=>b.type===project.requiredBuilding);return `<div class="investment-card"><div class="investment-icon">${project.icon}</div><div><b>${project.name}</b><small>${project.description}</small><span>Cost ${fmt(project.cost)} · +${fmt(project.income||0)}/hr income · ${fmt(project.savings||0)}/hr savings</span></div><button class="secondary-small" data-invest-project="${project.id}" ${owned||locked||facility||state.money<project.cost?'disabled':''}>${owned?'OWNED':locked?'LOCKED':facility?'FACILITY REQUIRED':state.money<project.cost?'UNAFFORDABLE':'INVEST'}</button></div>`;}).join('')}</div>
   <div class="facility-row"><span>Cargo handled</span><b>${(state.cargoTonsHandled || 0).toLocaleString('en-GB')} tonnes</b></div>`;
 }
 function renderResearch() {
@@ -444,6 +457,35 @@ function advanceTutorial(skip = false) {
 }
 
 function handlePanelClick(e) {
+  const loan=e.target.closest('[data-take-loan]');
+  if(loan){
+    const result=takeLoan(state,loan.dataset.takeLoan);
+    if(!result.ok){const messages={'level':'This loan unlocks at airport level '+result.level+'.','loan-limit':'The bank allows up to two active loans.','unknown-loan':'Loan offer not found.'};notifyLocal('Loan unavailable',messages[result.reason]||'The loan could not be issued.','warning');}
+    else notifyLocal('Loan approved',fmt(result.loan.originalAmount)+' added to the airport account. Repayments and interest are now part of hourly expenses.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+  const repayment=e.target.closest('[data-repay-loan]');
+  if(repayment){
+    const result=repayLoan(state,repayment.dataset.repayLoan,Number(repayment.dataset.amount));
+    if(!result.ok)notifyLocal('Repayment unavailable',result.reason==='funds'?'There is not enough cash for this repayment.':'This loan is no longer active.','warning');
+    else notifyLocal('Loan repayment processed',fmt(result.amount)+' repaid. Remaining balance: '+fmt(result.remaining)+'.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+  const tax=e.target.closest('[data-tax-rate]');
+  if(tax){
+    setTaxRate(state,Number(tax.dataset.taxRate));
+    notifyLocal('Tax policy updated','Corporate tax is now '+Math.round(state.taxRate*100)+'% of positive operating profit.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
+  const investment=e.target.closest('[data-invest-project]');
+  if(investment){
+    const result=investInProject(state,investment.dataset.investProject);
+    if(!result.ok){
+      const messages={'level':'This investment unlocks at level '+result.level+'.','facility':'Build the required specialist facility first.','already-owned':'This investment is already active.','funds':'There is not enough cash for this investment.','unknown-project':'Investment project not found.'};
+      notifyLocal('Investment unavailable',messages[result.reason]||'The project could not be purchased.','warning');
+    } else notifyLocal('Investment completed',result.project.name+' is now active. Its recurring return is included in the finance dashboard.','success');
+    renderPanel();refreshHUD();saveNow(false);return;
+  }
   const schedule=e.target.closest('[data-schedule-flight]');
   if(schedule){
     const flight=scheduleArrival(state,{model:schedule.dataset.model,airline:schedule.dataset.airline,destination:schedule.dataset.destination});
