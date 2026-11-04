@@ -190,6 +190,7 @@ export class AirportWorld {
     this.aircraftKind = null;
     this.aircraftLightTime = 0;
     this.aircraftMeshes = new Map();
+    this.serviceCrews = new Map();
     this.landMeshes = new Map();
     this.terminalRoof = null;
     this.terminalInteriorMode = false;
@@ -1027,6 +1028,54 @@ export class AirportWorld {
     this.onWorldClick?.({ x: Math.round(hit.x / 2) * 2, z: Math.round(hit.z / 2) * 2, originalEvent: event });
   }
 
+  createServiceCrew(flightId, profile) {
+    const people = [];
+    for (let i = 0; i < profile.count; i++) {
+      const person = makePassenger(profile.color, i + 1);
+      person.userData.serviceWorker = true;
+      person.userData.servicePhase = i * .9;
+      this.scene.add(person);
+      people.push(person);
+    }
+
+    const vehicle = new THREE.Group();
+    const vehicleColor = profile.vehicle === 'fuel' ? material('#e8e9e4') :
+      profile.vehicle === 'pushback' ? material('#e5a333') :
+      profile.vehicle === 'catering' ? material('#e7e5d6') :
+      profile.vehicle === 'maintenance' ? material('#3c8cbe') : material('#bd9a5b');
+    box(vehicle, 1.6, .62, 2.5, vehicleColor, 0, .58, 0);
+    box(vehicle, 1.25, .42, 1.0, shared.glass, 0, 1.04, .34);
+    if (profile.vehicle === 'fuel') {
+      cylinder(vehicle, .55, .55, 1.8, material('#edf1e9'), 0, 1.25, -.25, 16, [Math.PI / 2, 0, 0]);
+      box(vehicle, .12, .15, 2.6, shared.orange, 0, .16, 0);
+    } else if (profile.vehicle === 'catering') {
+      box(vehicle, 1.5, .7, 1.3, material('#e9e3d0'), 0, 1.15, -.05);
+      box(vehicle, .4, 1.1, .2, shared.orange, 0, 1.6, .55);
+    } else if (profile.vehicle === 'pushback') {
+      box(vehicle, 1.8, .32, .9, shared.yellow, 0, .94, -1.35);
+      box(vehicle, .18, .18, 1.6, shared.dark, 0, .5, -1.65);
+    } else {
+      const luggageColors = ['#d48b3e','#477da1','#6f8d72'];
+      for (let i = 0; i < 3; i++) box(vehicle, .48, .55, .65, material(luggageColors[i]), -.48 + i * .48, 1.08, -.45);
+      box(vehicle, 1.4, .1, .18, shared.dark, 0, .25, 1.2);
+    }
+    for (const x of [-.67, .67]) for (const z of [-.82, .82]) {
+      cylinder(vehicle, .2, .2, .14, shared.rubber, x, .2, z, 10, [0,0,Math.PI/2]);
+    }
+    this.scene.add(vehicle);
+    const entry = { flightId, phase: null, profile, people, vehicle, time: 0 };
+    this.serviceCrews.set(flightId, entry);
+    return entry;
+  }
+
+  removeServiceCrew(flightId) {
+    const entry = this.serviceCrews.get(flightId);
+    if (!entry) return;
+    for (const person of entry.people) this.scene.remove(person);
+    if (entry.vehicle) this.scene.remove(entry.vehicle);
+    this.serviceCrews.delete(flightId);
+  }
+
   syncFlight(flight) {
     this.syncFlights(flight ? [flight] : []);
   }
@@ -1054,11 +1103,45 @@ export class AirportWorld {
       entry.mesh.userData.gear.forEach(gear => { gear.visible = !airborne; });
       entry.mesh.userData.engineRunning = flight.phase !== 'parked';
       entry.mesh.userData.phase = flight.phase;
+
+      const serviceProfiles = {
+        'baggage-unload': { role: 'BAGGAGE', color: '#f3a52f', count: 3, vehicle: 'baggage' },
+        'cargo-unload': { role: 'CARGO', color: '#e59b35', count: 3, vehicle: 'cargo' },
+        refueling: { role: 'FUEL', color: '#2d8dbe', count: 2, vehicle: 'fuel' },
+        catering: { role: 'CATERING', color: '#f0e7d1', count: 2, vehicle: 'catering' },
+        'maintenance-check': { role: 'ENGINEERING', color: '#e0a246', count: 2, vehicle: 'maintenance' },
+        'cargo-loading': { role: 'CARGO', color: '#e59b35', count: 3, vehicle: 'cargo' },
+        boarding: { role: 'PASSENGER SERVICE', color: '#315f8e', count: 2, vehicle: 'boarding' },
+        pushback: { role: 'GROUND OPERATIONS', color: '#f2a12e', count: 2, vehicle: 'pushback' }
+      };
+      const profile = serviceProfiles[flight.phase];
+      let crewEntry = this.serviceCrews.get(id);
+      if (profile) {
+        if (!crewEntry || crewEntry.phase !== flight.phase) {
+          if (crewEntry) this.removeServiceCrew(id);
+          crewEntry = this.createServiceCrew(id, profile);
+          crewEntry.phase = flight.phase;
+        }
+        const offsets = [[-2.6, 2.1], [2.6, 2.0], [-2.4, -1.9]];
+        crewEntry.people.forEach((person, personIndex) => {
+          const [ox, oz] = offsets[personIndex] || [0, 3.2 + personIndex];
+          person.position.set(p.x + ox, 0, p.z + oz);
+          person.rotation.y = Math.atan2(-ox, -oz);
+        });
+        if (crewEntry.vehicle) {
+          const vehicleOffset = profile.vehicle === 'fuel' ? [5.7, .5] : profile.vehicle === 'pushback' ? [0, 7.4] : [-5.5, 2.3];
+          crewEntry.vehicle.position.set(p.x + vehicleOffset[0], .05, p.z + vehicleOffset[1]);
+          crewEntry.vehicle.rotation.y = profile.vehicle === 'pushback' ? Math.PI : Math.PI / 2;
+        }
+      } else if (crewEntry) {
+        this.removeServiceCrew(id);
+      }
     });
     for (const [id, entry] of this.aircraftMeshes) {
       if (visibleIds.has(id)) continue;
       this.scene.remove(entry.mesh);
       this.aircraftMeshes.delete(id);
+      this.removeServiceCrew(id);
     }
     const first = this.aircraftMeshes.values().next().value;
     this.aircraftMesh = first?.mesh || null;
@@ -1192,6 +1275,18 @@ export class AirportWorld {
         const angle = this.elapsed * .09;
         this.tug.position.set(-19 + Math.cos(angle) * 4.5, 0, 10.8 + Math.sin(angle) * 2.0);
         this.tug.rotation.y = -angle;
+      }
+    }
+    if (simulationRunning && dt > 0) {
+      for (const crew of this.serviceCrews.values()) {
+        crew.time += dt;
+        crew.people.forEach(person => {
+          const swing = Math.sin(crew.time * 7.2 + person.userData.servicePhase) * .26;
+          person.userData.leftLeg.rotation.x = swing;
+          person.userData.rightLeg.rotation.x = -swing;
+          person.userData.leftArm.rotation.x = -swing * .6;
+          person.userData.rightArm.rotation.x = swing * .6;
+        });
       }
     }
     for (const entry of this.aircraftMeshes.values()) {
