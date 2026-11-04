@@ -187,6 +187,7 @@ export class AirportWorld {
     this.pointerDown = null;
     this.buildings = new Map();
     this.aircraftMesh = null;
+    this.aircraftMeshes = new Map();
     this.aircraftKind = null;
     this.aircraftLightTime = 0;
     this.parkedAircraft = [];
@@ -903,29 +904,54 @@ export class AirportWorld {
   }
 
   syncFlight(flight) {
-    if (!flight) {
-      if (this.aircraftMesh) {
-        this.scene.remove(this.aircraftMesh);
-        this.aircraftMesh = null;
-        this.aircraftKind = null;
+    this.syncFlights(flight ? [flight] : []);
+  }
+
+  syncFlights(flights = []) {
+    const active = Array.isArray(flights) ? flights : [];
+    const liveIds = new Set();
+    for (const flight of active) {
+      if (!flight?.id) continue;
+      liveIds.add(flight.id);
+      const kind = flight.kind || 'regional';
+      let aircraft = this.aircraftMeshes.get(flight.id);
+      if (!aircraft || aircraft.userData.kind !== kind) {
+        if (aircraft) {
+          this.scene.remove(aircraft);
+          aircraft.traverse(object => {
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+              if (Array.isArray(object.material)) object.material.forEach(item => item.dispose());
+              else object.material.dispose();
+            }
+          });
+        }
+        aircraft = makeAircraft(kind);
+        this.aircraftMeshes.set(flight.id, aircraft);
+        this.scene.add(aircraft);
       }
-      return;
+      const p = flight.position || { x: -58, y: 8, z: -16 };
+      const wheelClearance = kind === 'cargo' ? .196 : kind === 'jet' ? .169 : .088;
+      aircraft.position.set(p.x, p.y + wheelClearance, p.z);
+      aircraft.rotation.y = Number.isFinite(flight.yaw) ? flight.yaw : Math.PI / 2;
+      const airborne = ['holding', 'approach', 'takeoff'].includes(flight.phase) && p.y > 2.2;
+      aircraft.userData.wheels.forEach(w => { w.visible = !airborne; });
+      aircraft.userData.gear.forEach(g => { g.visible = !airborne; });
+      aircraft.userData.engineRunning = !['parked', 'holding'].includes(flight.phase);
     }
-    const kind = flight.kind || 'regional';
-    if (!this.aircraftMesh || this.aircraftKind !== kind) {
-      if (this.aircraftMesh) this.scene.remove(this.aircraftMesh);
-      this.aircraftMesh = makeAircraft(kind);
-      this.aircraftKind = kind;
-      this.scene.add(this.aircraftMesh);
+    for (const [id, aircraft] of this.aircraftMeshes) {
+      if (liveIds.has(id)) continue;
+      this.scene.remove(aircraft);
+      aircraft.traverse(object => {
+        if (object.geometry) object.geometry.dispose();
+        if (object.material) {
+          if (Array.isArray(object.material)) object.material.forEach(item => item.dispose());
+          else object.material.dispose();
+        }
+      });
+      this.aircraftMeshes.delete(id);
     }
-    const p = flight.position || { x: -58, y: 8, z: -16 };
-    const wheelClearance = kind === 'cargo' ? .196 : kind === 'jet' ? .169 : .088;
-    this.aircraftMesh.position.set(p.x, p.y + wheelClearance, p.z);
-    this.aircraftMesh.rotation.y = Number.isFinite(flight.yaw) ? flight.yaw : Math.PI / 2;
-    const airborne = ['approach', 'takeoff'].includes(flight.phase) && p.y > 2.2;
-    this.aircraftMesh.userData.wheels.forEach(w => { w.visible = !airborne; });
-    this.aircraftMesh.userData.gear.forEach(g => { g.visible = !airborne; });
-    this.aircraftMesh.userData.engineRunning = flight.phase !== 'parked';
+    this.aircraftMesh = this.aircraftMeshes.values().next().value || null;
   }
 
   setWeather(weather) {
@@ -1057,13 +1083,13 @@ export class AirportWorld {
         this.tug.rotation.y = -angle;
       }
     }
-    if (this.aircraftMesh) {
-      if (this.aircraftMesh.userData.engineRunning && dt > 0) this.aircraftMesh.userData.propellers.forEach(p => { p.rotation.z += dt * 34; });
+    for (const aircraft of this.aircraftMeshes.values()) {
+      if (aircraft.userData.engineRunning && dt > 0) aircraft.userData.propellers.forEach(p => { p.rotation.z += dt * 34; });
       this.aircraftLightTime += dt;
-      const blink = Math.sin(this.aircraftLightTime * 8) > .15;
-      this.aircraftMesh.userData.beacon.visible = blink;
-      this.aircraftMesh.userData.navRed.visible = blink;
-      this.aircraftMesh.userData.navGreen.visible = blink;
+      const blink = Math.sin(this.aircraftLightTime * 8 + (aircraft.userData.lightOffset || 0)) > .15;
+      aircraft.userData.beacon.visible = blink;
+      aircraft.userData.navRed.visible = blink;
+      aircraft.userData.navGreen.visible = blink;
     }
     for (const aircraft of this.parkedAircraft) {
       const blink = Math.sin(this.elapsed * 4 + aircraft.userData.parkedLightOffset) > .5;
