@@ -1,23 +1,64 @@
-export function hourlyExpenses(state) {
-  const wages = Object.values(state.staff).reduce((sum, count) => sum + count * 55, 0);
-  const maintenance = state.buildings.reduce((sum, building) => sum + (building.upkeep || 0), 0);
-  const runwayWearCost = Math.max(0, 82 - (state.runwayCondition ?? 100)) * 1.35;
-  return Math.round(280 + wages + maintenance * (state.research.includes('green-energy') ? 0.9 : 1) + runwayWearCost);
-}
-export function hourlyIncome(state) {
+export function hourlyIncomeBreakdown(state) {
   const gates = 1 + state.buildings.filter(b => b.type === 'gate').length;
   const demandBoost = state.research.includes('digital-slots') ? 1.15 : 1;
-  const retail = state.buildings.filter(b => ['cafe', 'shop'].includes(b.type)).length * 260;
-  const parking = state.buildings.filter(b => b.type === 'parking').length * 390;
-  const hotels = state.buildings.filter(b => b.type === 'hotel').length * 520;
-  const cargoOperations = state.buildings.some(b => b.type === 'cargo-terminal') ? 260 : 0;
-  const operational = state.flightsCompleted > 0 ? (950 + gates * 100) : 620;
-  return Math.round((operational + retail + parking + hotels + cargoOperations) * demandBoost);
+  return {
+    airportServices: (state.flightsCompleted > 0 ? 1480 : 1180) * demandBoost,
+    gateServices: gates * 190 * demandBoost,
+    retail: state.buildings.filter(b => ['cafe', 'shop'].includes(b.type)).length * 420 * demandBoost,
+    parking: state.buildings.filter(b => b.type === 'parking').length * 650 * demandBoost,
+    hotels: state.buildings.filter(b => b.type === 'hotel').length * 950 * demandBoost,
+    cargo: state.buildings.some(b => b.type === 'cargo-terminal') ? 600 * demandBoost : 0,
+  };
 }
+
+export function hourlyIncome(state) {
+  return Math.round(Object.values(hourlyIncomeBreakdown(state)).reduce((sum, value) => sum + value, 0));
+}
+
+export function hourlyExpenseBreakdown(state) {
+  const wages = Object.values(state.staff).reduce((sum, count) => sum + count * 55, 0);
+  const maintenance = state.buildings.reduce((sum, building) => sum + (building.upkeep || 0), 0);
+  const runwayMaintenance = Math.max(0, 82 - (state.runwayCondition ?? 100)) * 1.35;
+  return {
+    wages,
+    baseOperations: 280,
+    buildingMaintenance: maintenance * (state.research.includes('green-energy') ? 0.9 : 1),
+    runwayMaintenance,
+  };
+}
+
+export function hourlyExpenses(state) {
+  return Math.round(Object.values(hourlyExpenseBreakdown(state)).reduce((sum, value) => sum + value, 0));
+}
+
 export function addMoney(state, amount) {
   state.money = Math.round((state.money + amount) * 100) / 100;
-  if (amount >= 0) state.lifetimeRevenue += amount; else state.lifetimeExpenses += Math.abs(amount);
+  if (amount >= 0) state.lifetimeRevenue += amount;
+  else state.lifetimeExpenses += Math.abs(amount);
 }
+
+/**
+ * Pays all recurring airport revenue and expenses for the elapsed game time.
+ * The simulation clock advances in game minutes, so 60 elapsed game minutes
+ * represent one in-game hour. Both sides of the cash flow are booked to the
+ * balance and lifetime ledger at exactly the same rate.
+ */
+export function applyHourlyCashFlow(state, gameMinutes) {
+  if (!Number.isFinite(gameMinutes) || gameMinutes <= 0) return { income: 0, expenses: 0, net: 0 };
+  const incomeParts = hourlyIncomeBreakdown(state);
+  const expenseParts = hourlyExpenseBreakdown(state);
+  const income = Object.values(incomeParts).reduce((sum, value) => sum + value, 0);
+  const expenses = Object.values(expenseParts).reduce((sum, value) => sum + value, 0);
+  const factor = gameMinutes / 60;
+  addMoney(state, income * factor);
+  addMoney(state, -expenses * factor);
+  state.retailIncome = (state.retailIncome || 0) + incomeParts.retail * factor;
+  state.parkingIncome = (state.parkingIncome || 0) + incomeParts.parking * factor;
+  state.hotelIncome = (state.hotelIncome || 0) + incomeParts.hotels * factor;
+  state.cargoIncome = (state.cargoIncome || 0) + incomeParts.cargo * factor;
+  return { income, expenses, net: income - expenses };
+}
+
 export function settleFlight(state, passengers = 64, cargoTons = 0) {
   const landing = 1250;
   const passengerFees = passengers * 16;
@@ -37,7 +78,7 @@ export function settleFlight(state, passengers = 64, cargoTons = 0) {
   // Record gross income and costs separately so the finance screen remains consistent.
   addMoney(state, revenue);
   addMoney(state, -operatingCost);
-  state.retailIncome += retail;
+  state.retailIncome = (state.retailIncome || 0) + retail;
   state.totalPassengers += passengers;
   state.passengers = Math.min(999, state.passengers + passengers);
   state.flightsCompleted++;
