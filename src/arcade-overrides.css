@@ -345,3 +345,5 @@
 .audio-volume-buttons button { padding:6px 7px; font-size:7px; }
 .audio-volume-buttons button.active { border-color:rgba(158,231,123,.7); color:#b1f18c; background:rgba(110,179,75,.16); }
 @media(max-width:480px) { .audio-volume-buttons { flex-wrap:wrap; justify-content:flex-end; } }
+
+.build-rotation-hint { color:#b5d6e2; font-size:7px; }

@@ -11,6 +11,7 @@ let state = INITIAL_STATE();
 let world;
 let currentTab = 'overview';
 let selectedBuild = null;
+let selectedBuildRotation = 0;
 let selectedCategory = 'All';
 let terminalInteriorVisible = false;
 let airportAudioEnabled = false;
@@ -104,13 +105,13 @@ function onWorldHover(pos) {
   const result = getPlacementStatus(selectedBuild, pos.x, pos.z);
   $('hint-text').textContent = result.valid
     ? `${item?.name || 'Building'} · X ${pos.x}, Z ${pos.z} · Clear site`
-    : `${result.reason} · X ${pos.x}, Z ${pos.z}`;
+    : `${result.reason} · X ${pos.x}, Z ${pos.z} · R rotates ${selectedBuildRotation}°`;
   $('world-coords').textContent = `X ${pos.x}  ·  Z ${pos.z}`;
   world.updatePreview(result.valid);
 }
 
 function getPlacementStatus(type, x, z) {
-  return validatePlacement(type, x, z, state.buildings, state.landParcels || []);
+  return validatePlacement(type, x, z, state.buildings, state.landParcels || [], selectedBuildRotation);
 }
 
 function onWorldClick(pos) {
@@ -121,11 +122,11 @@ function onWorldClick(pos) {
   if(state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} more to build ${item.name}.`,'warning');return;}
   const placement = getPlacementStatus(selectedBuild, pos.x, pos.z); if(!placement.valid){notifyLocal('Cannot build here', placement.reason + '. Move the preview to a clear plot.','warning');return;}
   addMoney(state,-item.cost);
-  const building={id:`b-${Date.now()}-${Math.floor(Math.random()*1000)}`,type:item.id,x:pos.x,z:pos.z,upkeep:item.upkeep,name:item.name};
+  const building={id:`b-${Date.now()}-${Math.floor(Math.random()*1000)}`,type:item.id,x:pos.x,z:pos.z,rotation:selectedBuildRotation,upkeep:item.upkeep,name:item.name};
   state.buildings.push(building); state.stats.constructions++; giveXP(state,item.xp);
   world.addBuilding(building);
   notifyLocal('Construction complete',`${item.name} is now operational. Maintenance: ${fmt(item.upkeep)} / hour.`,'success');
-  selectedBuild=null; world.clearPlacement(); $('world-hint').classList.add('hidden');
+  selectedBuild=null; selectedBuildRotation=0; world.clearPlacement(); $('world-hint').classList.add('hidden');
   currentTab='build'; setActiveTab('build'); renderPanel(); refreshHUD();
 }
 
@@ -145,9 +146,9 @@ function openBuild(type) {
   $('panel').classList.remove('collapsed'); panelOpen = true; $('panel-toggle').textContent = '‹';
   if(state.level<item.level){notifyLocal('Locked',`${item.name} unlocks at level ${item.level}.`,'warning');return;}
   if(state.money<item.cost){notifyLocal('Not enough funds',`You need ${fmt(item.cost-state.money)} to build this.`,'warning');return;}
-  selectedBuild=type; world.setPlacement(type, item.footprint || [8,8]); $('world-hint').classList.remove('hidden'); $('hint-text').textContent=`${item.name} selected · Green preview = valid plot`; notifyLocal('Placement mode',`Click an open area to place ${item.name}. Press Esc to cancel.`,'info');
+  selectedBuild=type; selectedBuildRotation=0; world.setPlacement(type, item.footprint || [8,8], selectedBuildRotation); $('world-hint').classList.remove('hidden'); $('hint-text').textContent=`${item.name} selected · R rotates 90° · Green preview = valid plot`; notifyLocal('Placement mode',`Click an open area to place ${item.name}. Press Esc to cancel.`,'info');
 }
-function cancelBuild() { selectedBuild=null; world?.clearPlacement(); $('world-hint').classList.add('hidden'); }
+function cancelBuild() { selectedBuild=null; selectedBuildRotation=0; world?.clearPlacement(); $('world-hint').classList.add('hidden'); }
 
 function renderPanel() {
   const content=$('panel-content');
@@ -717,6 +718,7 @@ $('toast-stack').addEventListener('click',e=>{const b=e.target.closest('[data-di
 $('panel').addEventListener('dblclick',e=>{if(e.target.closest('.panel-header'))togglePanel();});
 $('modal-backdrop').addEventListener('click',e=>{if(e.target.id==='modal-backdrop')$('modal-backdrop').classList.add('hidden');});
 window.addEventListener('keydown',e=>{
+  if(e.key.toLowerCase()==='r' && selectedBuild){e.preventDefault();selectedBuildRotation=(selectedBuildRotation+90)%360;const item=BUILDINGS.find(b=>b.id===selectedBuild);world.setPlacement(selectedBuild,item.footprint||[8,8],selectedBuildRotation);$('hint-text').textContent=`${item.name} · Rotation ${selectedBuildRotation}° · R rotates 90°`;}
   if(e.key==='Escape'){if(selectedBuild)cancelBuild();else if(!$('modal-backdrop').classList.contains('hidden'))$('modal-backdrop').classList.add('hidden');else if(tutorialVisible)advanceTutorial(true);}
   if(e.key.toLowerCase()==='b' && !$('main-menu').classList.contains('hidden')){setActiveTab('build');renderPanel();}
   if(['1','2','4'].includes(e.key) && !$('main-menu').classList.contains('hidden')){state.speed=Number(e.key);refreshHUD();}

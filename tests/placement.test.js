@@ -376,3 +376,25 @@ test('airport ambience volume is clamped to a safe user-controlled range', () =>
   assert.equal(setAirportAudioVolume(-1), 0);
   assert.equal(setAirportAudioVolume('invalid'), 0);
 });
+
+test('taxiway and apron pavement can be built on owned expansion land', () => {
+  const parcel = { id: 'land-east-1', side: 'east', x: 130, z: 69.75, w: 80, d: 78 };
+  assert.equal(getPlacementStatus('apron', 130, 69.75, [], [parcel]).valid, true);
+  assert.equal(getPlacementStatus('taxiway', 130, 69.75, [], [parcel]).valid, true);
+  assert.equal(getPlacementStatus('taxiway', 130, 69.75, [{type:'taxiway',x:130,z:69.75}], [parcel]).valid, false);
+});
+
+test('gates can be placed on an owned apron pad but not elsewhere on an expansion parcel', () => {
+  const parcel = { id: 'land-east-1', side: 'east', x: 130, z: 69.75, w: 80, d: 78 };
+  const apron = { id: 'apron-east', type: 'apron', x: 130, z: 69.75 };
+  assert.equal(getPlacementStatus('gate', 130, 69.75, [], [parcel]).valid, false);
+  assert.equal(getPlacementStatus('gate', 130, 69.75, [apron], [parcel]).valid, true);
+  assert.equal(getPlacementStatus('gate', 158, 69.75, [apron], [parcel]).valid, false);
+});
+
+test('quarter-turn rotation swaps the validated footprint dimensions', () => {
+  const parcel = { id: 'land-east-1', side: 'east', x: 130, z: 69.75, w: 80, d: 78 };
+  assert.equal(getPlacementStatus('taxiway', 130, 69.75, [], [parcel], 0).valid, true);
+  assert.equal(getPlacementStatus('taxiway', 130, 69.75, [], [parcel], 90).valid, true);
+  assert.equal(getPlacementStatus('taxiway', 130, 108, [], [parcel], 90).valid, false);
+});

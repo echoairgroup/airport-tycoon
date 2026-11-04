@@ -9,10 +9,12 @@ function rectanglesOverlap(a, b, gap = 0) {
  * Validates a construction footprint against the playable airport zones,
  * fixed infrastructure and every already-built facility.
  */
-export function getPlacementStatus(type, x, z, placedBuildings = [], landParcels = []) {
+export function getPlacementStatus(type, x, z, placedBuildings = [], landParcels = [], rotation = 0) {
   const item = BUILDINGS.find(b => b.id === type);
   if (!item) return { valid: false, reason: 'Unknown building' };
-  const [w, d] = item.footprint || [8, 8];
+  const baseFootprint = item.footprint || [8, 8];
+  const quarterTurn = Math.abs(Math.round(rotation / 90)) % 2 === 1;
+  const [w, d] = quarterTurn ? [baseFootprint[1], baseFootprint[0]] : baseFootprint;
   const candidate = { x, z, w, d };
 
   // A runway extension is a special airside construction: it may only connect
@@ -41,22 +43,47 @@ export function getPlacementStatus(type, x, z, placedBuildings = [], landParcels
   );
 
   if (item.zone === 'apron') {
-    if (x - w / 2 < -28 || x + w / 2 > 28 || z - d / 2 < 2 || z + d / 2 > 15) {
-      return { valid: false, reason: 'Gates must be placed on the aircraft apron' };
-    }
-    const initialGate = { x: 8, z: 8.5, w: 13, d: 10 };
-    if (rectanglesOverlap(candidate, initialGate, 1.2)) {
-      return { valid: false, reason: 'This gate would overlap Gate 01' };
+    const originalApron = x - w / 2 >= -28 && x + w / 2 <= 28 && z - d / 2 >= 2 && z + d / 2 <= 15;
+    const expansionApron = landParcels.some(parcel =>
+      x - w / 2 >= parcel.x - parcel.w / 2 + .35 && x + w / 2 <= parcel.x + parcel.w / 2 - .35 &&
+      z - d / 2 >= parcel.z - parcel.d / 2 + .35 && z + d / 2 <= parcel.z + parcel.d / 2 - .35
+    );
+    if (!originalApron && !expansionApron) return { valid: false, reason: 'Gates must be placed on the original apron or an owned expansion apron' };
+    if (expansionApron && !placedBuildings.some(building => building.type === 'apron' &&
+      x - w / 2 >= building.x - (BUILDINGS.find(def => def.id === 'apron').footprint[0] / 2) + .5 &&
+      x + w / 2 <= building.x + (BUILDINGS.find(def => def.id === 'apron').footprint[0] / 2) - .5 &&
+      z - d / 2 >= building.z - (BUILDINGS.find(def => def.id === 'apron').footprint[1] / 2) + .5 &&
+      z + d / 2 <= building.z + (BUILDINGS.find(def => def.id === 'apron').footprint[1] / 2) - .5
+    )) return { valid: false, reason: 'Build an aircraft apron pad before placing a gate on expansion land' };
+    if (originalApron) {
+      const initialGate = { x: 8, z: 8.5, w: 13, d: 10 };
+      if (rectanglesOverlap(candidate, initialGate, 1.2)) return { valid: false, reason: 'This gate would overlap Gate 01' };
     }
     for (const building of placedBuildings) {
       if (building.type !== 'gate') continue;
       const other = BUILDINGS.find(def => def.id === building.type);
       const footprint = other?.footprint || [13, 10];
-      if (rectanglesOverlap(candidate, { x: building.x, z: building.z, w: footprint[0], d: footprint[1] }, 1.2)) {
-        return { valid: false, reason: 'Gate stands need more space' };
+      const otherQuarterTurn = Math.abs(Math.round((building.rotation || 0) / 90)) % 2 === 1;
+      const otherW = otherQuarterTurn ? footprint[1] : footprint[0];
+      const otherD = otherQuarterTurn ? footprint[0] : footprint[1];
+      if (rectanglesOverlap(candidate, { x: building.x, z: building.z, w: otherW, d: otherD }, 1.2)) return { valid: false, reason: 'Gate stands need more space' };
+    }
+    return { valid: true, reason: originalApron ? 'Valid gate stand' : 'Valid expansion gate stand' };
+  }
+
+  if (item.zone === 'airside') {
+    if (!insideServicePlot) return { valid: false, reason: 'Build airside infrastructure on owned airport land' };
+    for (const building of placedBuildings) {
+      const other = BUILDINGS.find(def => def.id === building.type);
+      const footprint = other?.footprint || [10, 10];
+      const otherQuarterTurn = Math.abs(Math.round((building.rotation || 0) / 90)) % 2 === 1;
+      const otherW = otherQuarterTurn ? footprint[1] : footprint[0];
+      const otherD = otherQuarterTurn ? footprint[0] : footprint[1];
+      if (rectanglesOverlap(candidate, { x: building.x, z: building.z, w: otherW, d: otherD }, .1)) {
+        return { valid: false, reason: 'Airside pavement overlaps ' + (other?.name || 'another facility') };
       }
     }
-    return { valid: true, reason: 'Valid gate stand' };
+    return { valid: true, reason: 'Valid airside construction plot' };
   }
 
   // Service facilities may use the original yard or any purchased expansion parcel.

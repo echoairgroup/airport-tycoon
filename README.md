@@ -101,3 +101,7 @@ Airport management now supports repeatable land acquisitions to the west, east a
 - Players can pick an aircraft and airline and schedule a destination directly into the multi-aircraft traffic system.
 - Mission objectives are grouped into three longer campaign chapters: Regional airport, International gateway and Major airport hub. They include long-term milestones for flight volume, passengers, land expansion, airline contracts, cargo, airport level and construction.
 - Settings now include a user-activated procedural ambience soundscape with volume controls. It synthesises soft wind, terminal ventilation and low airfield ambience through Web Audio; it is not a library of recorded aircraft, vehicle or ATC sounds.
+
+### Airside layout pieces
+
+The build catalogue now includes rotatable taxiway segments and aircraft apron pads. Use the R key while placing to rotate a piece by 90 degrees. New aircraft gates can be placed on the original apron or inside a purchased expansion parcel after an apron pad is built there. Both the placement preview and saved building restore retain the selected orientation. The taxiway and apron pieces are currently construction/visual infrastructure; the traffic engine still uses its shared runway and taxiway reservation model rather than a full node-by-node route planner, and the current runway extension remains tied to the two original runway ends.

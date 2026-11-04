@@ -756,9 +756,10 @@ export class AirportWorld {
     const label = makeTextLabel(number, '#fff5cb', [1.5, .5, 1]); label.position.set(0, .03, 4.1); g.add(label);
   }
 
-  createBuilding(type, x, z, id, existing = false) {
+  createBuilding(type, x, z, id, existing = false, rotation = 0) {
     const root = new THREE.Group();
     root.position.set(x, 0, z);
+    root.rotation.y = (Number(rotation) || 0) * Math.PI / 180;
     root.userData = { id, type, collision: true };
     this.scene.add(root);
 
@@ -840,6 +841,29 @@ export class AirportWorld {
       box(root, 16.3, .5, 9.8, shared.green, 0, 5.0, 0);
       for (let x = -6; x <= 6; x += 3) box(root, 1.8, 2.9, .14, shared.glass, x, 2.3, -4.82, false);
       box(root, 5.2, .3, 1.6, shared.orange, 0, 3.75, -5.1);
+    } else if (type === 'taxiway') {
+      box(root, 24.2, .22, 7.2, shared.asphaltEdge, 0, .08, 0, false);
+      box(root, 23.8, .22, 6.8, shared.asphalt, 0, .19, 0, false);
+      box(root, 19.4, .035, .16, shared.yellow, 0, .32, 0, false);
+      for (const end of [-1, 1]) {
+        for (const side of [-1, 1]) box(root, 2.2, .04, .14, shared.yellow, end * 10.2, .33, side * 2.55, false);
+      }
+      for (let x = -10; x <= 10; x += 4) for (const z of [-3.0, 3.0]) {
+        sphere(root, .11, shared.blue, x, .38, z, [.75, .55, .75]);
+      }
+      const taxiSign = makeTextLabel('TAXIWAY · T', '#ffffff', [3.1, .65, 1]);
+      taxiSign.position.set(0, .68, -1.5); root.add(taxiSign);
+    } else if (type === 'apron') {
+      box(root, 26.2, .24, 20.2, shared.asphaltEdge, 0, .08, 0, false);
+      box(root, 25.8, .22, 19.8, shared.asphalt, 0, .2, 0, false);
+      for (const standX of [-8, 0, 8]) {
+        box(root, .13, .035, 14.2, shared.yellow, standX, .33, 0, false);
+        box(root, 5.0, .035, .13, shared.yellow, standX + 2.5, .33, -7.1, false);
+        box(root, 5.0, .035, .13, shared.yellow, standX + 2.5, .33, 7.1, false);
+        box(root, 1.4, .035, .15, shared.white, standX, .34, -5.5, false);
+      }
+      const apronSign = makeTextLabel('AIRCRAFT APRON', '#ffffff', [5.0, .7, 1]);
+      apronSign.position.set(0, .72, -8.1); root.add(apronSign);
     } else if (type === 'runway') {
       // The 48 m segment overlaps the original runway shoulder slightly so
       // the new concrete/asphalt joins visually without a gap. Its outer end
@@ -962,18 +986,20 @@ export class AirportWorld {
   }
 
   addBuilding(building) {
-    return this.createBuilding(building.type, building.x, building.z, building.id);
+    return this.createBuilding(building.type, building.x, building.z, building.id, false, building.rotation || 0);
   }
 
   addInitialGate() {
     this.createBuilding('gate', 8, 8.5, 'initial-gate', true);
   }
 
-  setPlacement(type, footprint = [8, 8]) {
+  setPlacement(type, footprint = [8, 8], rotation = 0) {
     this.clearPlacement();
     this.previewType = type;
     this.previewFootprint = footprint;
+    this.previewRotation = Number(rotation) || 0;
     const ghost = new THREE.Group();
+    ghost.rotation.y = this.previewRotation * Math.PI / 180;
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(footprint[0], footprint[1]),
       new THREE.MeshBasicMaterial({ color: '#57e69a', transparent: true, opacity: .32, depthWrite: false, side: THREE.DoubleSide })
